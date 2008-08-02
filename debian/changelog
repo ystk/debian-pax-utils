@@ -1,0 +1,41 @@
+pax-utils (0.1.16-2) unstable; urgency=low
+
+  * Switch to libcap2-dev. (Closes: #492640)
+  * Update standards version to 3.8.0.
+
+ -- Rémi Denis-Courmont <rdenis@simphalempin.com>  Sat, 02 Aug 2008 22:19:07 +0300
+
+pax-utils (0.1.16-1) unstable; urgency=low
+
+  * New upstream version.
+  * Added Homepage debian/control header.
+
+ -- Rémi Denis-Courmont <rdenis@simphalempin.com>  Wed, 17 Oct 2007 18:39:39 +0300
+
+pax-utils (0.1.15-2) unstable; urgency=low
+
+  * Added XS-Vcs-Svn field.
+  * Update standards version to 3.7.2.2.
+
+ -- Rémi Denis-Courmont <rdenis@simphalempin.com>  Sun, 03 Jun 2007 22:46:34 +0300
+
+pax-utils (0.1.15-1) unstable; urgency=low
+
+  * New upstream version:
+   - no non-DFSG content anymore,
+   - _GNU_SOURCE fix no longer needed.
+
+ -- Rémi Denis-Courmont <rdenis@simphalempin.com>  Wed, 13 Dec 2006 16:26:56 +0100
+
+pax-utils (0.1.13.dfsg.1-2) unstable; urgency=low
+
+  * Don't build-depends on libcap-dev on Hurd and kFreeBSD.
+
+ -- Rémi Denis-Courmont <rdenis@simphalempin.com>  Fri,  6 Oct 2006 17:51:17 +0300
+
+pax-utils (0.1.13.dfsg.1-1) unstable; urgency=low
+
+  * Initial Debian package (Closes: #388200).
+  * Remove original macho.h with Apple copyright but no license.
+
+ -- Rémi Denis-Courmont <rdenis@simphalempin.com>  Tue, 19 Sep 2006 17:34:40 +0300

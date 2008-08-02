@@ -1,0 +1,18 @@
+Source: pax-utils
+Section: misc
+Priority: extra
+Maintainer: Rémi Denis-Courmont <rdenis@simphalempin.com>
+Build-Depends: cdbs, debhelper (>= 4.1.0), libcap2-dev [!hurd-i386 !kfreebsd-i386 !kfreebsd-amd64]
+Standards-Version: 3.8.0
+Homepage: http://dev.gentoo.org/~solar/pax-utils/
+XS-Vcs-Svn: http://anonsvn.remlab.net/svn/pkg-remlab/pax-utils
+
+Package: pax-utils
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Suggests: chpax
+Description: Security-focused ELF files checking tool
+ This is a small set of various PaX aware and related utilities for ELF
+ binaries. It can check ELF binary files and running processes for
+ issues that might be relevant when using ELF binaries along with PaX,
+ such as non-PIC code or executable stack and heap.

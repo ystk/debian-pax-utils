@@ -1,0 +1,9 @@
+#!/usr/bin/make -f
+
+include /usr/share/cdbs/1/rules/debhelper.mk
+include /usr/share/cdbs/1/class/makefile.mk
+
+ifeq ($(DEB_HOST_ARCH_OS),linux)
+DEB_MAKE_ENVVARS := USE_CAP=yes
+endif
+DEB_MAKE_INSTALL_TARGET := install DESTDIR=$(CURDIR)/debian/pax-utils/
