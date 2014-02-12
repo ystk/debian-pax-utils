@@ -1,14 +1,14 @@
 /*
  * Copyright 2003-2007 Gentoo Foundation
  * Distributed under the terms of the GNU General Public License v2
- * $Header: /var/cvsroot/gentoo-projects/pax-utils/scanelf.c,v 1.186 2007/08/20 09:54:15 vapier Exp $
+ * $Header: /var/cvsroot/gentoo-projects/pax-utils/scanelf.c,v 1.222 2010/12/08 01:24:01 vapier Exp $
  *
  * Copyright 2003-2007 Ned Ludd        - <solar@gentoo.org>
  * Copyright 2004-2007 Mike Frysinger  - <vapier@gentoo.org>
  */
 
-static const char *rcsid = "$Id: scanelf.c,v 1.186 2007/08/20 09:54:15 vapier Exp $";
-const char * const argv0 = "scanelf";
+static const char *rcsid = "$Id: scanelf.c,v 1.222 2010/12/08 01:24:01 vapier Exp $";
+const char argv0[] = "scanelf";
 
 #include "paxinc.h"
 
@@ -27,7 +27,6 @@ static void usage(int status);
 static char **get_split_env(const char *envvar);
 static void parseenv(void);
 static int parseargs(int argc, char *argv[]);
-static int rematch(const char *regex, const char *match, int cflags);
 
 /* variables to control behavior */
 static char match_etypes[126] = "";
@@ -40,6 +39,7 @@ static char dir_recurse = 0;
 static char dir_crossmount = 1;
 static char show_pax = 0;
 static char show_perms = 0;
+static char show_size = 0;
 static char show_phdr = 0;
 static char show_textrel = 0;
 static char show_rpath = 0;
@@ -50,11 +50,13 @@ static char show_soname = 0;
 static char show_textrels = 0;
 static char show_banner = 1;
 static char show_endian = 0;
+static char show_osabi = 0;
+static char show_eabi = 0;
 static char be_quiet = 0;
 static char be_verbose = 0;
 static char be_wewy_wewy_quiet = 0;
 static char be_semi_verbose = 0;
-static char *find_sym = NULL, *versioned_symname = NULL;
+static char *find_sym = NULL;
 static char *find_lib = NULL;
 static char *find_section = NULL;
 static char *out_format = NULL;
@@ -67,32 +69,18 @@ static char **qa_textrels = NULL;
 static char **qa_execstack = NULL;
 static char **qa_wx_load = NULL;
 
-int match_bits = 0;
-unsigned int match_perms = 0;
-caddr_t ldcache = 0;
-size_t ldcache_size = 0;
-unsigned long setpax = 0UL;
+static int match_bits = 0;
+static unsigned int match_perms = 0;
+static void *ldcache = NULL;
+static size_t ldcache_size = 0;
+static unsigned long setpax = 0UL;
 
-int has_objdump = 0;
-
-static char *getstr_perms(const char *fname);
-static char *getstr_perms(const char *fname)
-{
-	struct stat st;
-	static char buf[8];
-
-	if ((stat(fname, &st)) == (-1))
-		return (char *) "";
-
-	snprintf(buf, sizeof(buf), "%o", st.st_mode);
-
-	return (char *) buf + 2;
-}
+static int has_objdump = 0;
 
 /* find the path to a file by name */
 static char *which(const char *fname)
 {
-	static char fullpath[BUFSIZ];
+	static char fullpath[__PAX_UTILS_PATH_MAX];
 	char *path, *p;
 
 	path = getenv("PATH");
@@ -103,9 +91,9 @@ static char *which(const char *fname)
 	while ((p = strrchr(path, ':')) != NULL) {
 		snprintf(fullpath, sizeof(fullpath), "%s/%s", p + 1, fname);
 		*p = 0;
-		if (access(fullpath, R_OK) != (-1)) {
+		if (access(fullpath, R_OK) != -1) {
 			free(path);
-			return (char *) fullpath;
+			return fullpath;
 		}
 	}
 	free(path);
@@ -120,7 +108,6 @@ static int rematch(const char *regex, const char *match, int cflags)
 
 	if ((match == NULL) || (regex == NULL))
 		return EXIT_FAILURE;
-
 
 	if ((ret = regcomp(&preg, regex, cflags))) {
 		char err[256];
@@ -142,25 +129,28 @@ static int rematch(const char *regex, const char *match, int cflags)
 static void scanelf_file_get_symtabs(elfobj *elf, void **sym, void **tab)
 {
 	/* find the best SHT_DYNSYM and SHT_STRTAB sections */
+
+	/* debug sections */
+	void *symtab = elf_findsecbyname(elf, ".symtab");
+	void *strtab = elf_findsecbyname(elf, ".strtab");
+	/* runtime sections */
+	void *dynsym = elf_findsecbyname(elf, ".dynsym");
+	void *dynstr = elf_findsecbyname(elf, ".dynstr");
+
 #define GET_SYMTABS(B) \
 	if (elf->elf_class == ELFCLASS ## B) { \
-		Elf ## B ## _Shdr *symtab, *strtab, *dynsym, *dynstr; \
-		/* debug sections */ \
-		symtab = SHDR ## B (elf_findsecbyname(elf, ".symtab")); \
-		strtab = SHDR ## B (elf_findsecbyname(elf, ".strtab")); \
-		/* runtime sections */ \
-		dynsym = SHDR ## B (elf_findsecbyname(elf, ".dynsym")); \
-		dynstr = SHDR ## B (elf_findsecbyname(elf, ".dynstr")); \
-		if (symtab && dynsym) { \
-			*sym = (void*)((EGET(symtab->sh_size) > EGET(dynsym->sh_size)) ? symtab : dynsym); \
-		} else { \
-			*sym = (void*)(symtab ? symtab : dynsym); \
-		} \
-		if (strtab && dynstr) { \
-			*tab = (void*)((EGET(strtab->sh_size) > EGET(dynstr->sh_size)) ? strtab : dynstr); \
-		} else { \
-			*tab = (void*)(strtab ? strtab : dynstr); \
-		} \
+	if (symtab && dynsym) { \
+		Elf ## B ## _Shdr *esymtab = symtab; \
+		Elf ## B ## _Shdr *edynsym = dynsym; \
+		*sym = (EGET(esymtab->sh_size) > EGET(edynsym->sh_size)) ? symtab : dynsym; \
+	} else \
+		*sym = symtab ? symtab : dynsym; \
+	if (strtab && dynstr) { \
+		Elf ## B ## _Shdr *estrtab = strtab; \
+		Elf ## B ## _Shdr *edynstr = dynstr; \
+		*tab = (EGET(estrtab->sh_size) > EGET(edynstr->sh_size)) ? strtab : dynstr; \
+	} else \
+		*tab = strtab ? strtab : dynstr; \
 	}
 	GET_SYMTABS(32)
 	GET_SYMTABS(64)
@@ -199,7 +189,6 @@ static char *scanelf_file_pax(elfobj *elf, char *found_pax)
 	SHOW_PAX(32)
 	SHOW_PAX(64)
 	}
-
 
 	if (fix_elf && setpax) {
 		/* set the chpax settings */
@@ -268,7 +257,7 @@ static char *scanelf_file_phdr(elfobj *elf, char *found_phdr, char *found_relro,
 				offset = 4; \
 				check_flags = PF_X; \
 			} else if (EGET(phdr[i].p_type) == PT_LOAD) { \
-				if (ehdr->e_type == ET_DYN || ehdr->e_type == ET_EXEC) \
+				if (EGET(ehdr->e_type) == ET_DYN || EGET(ehdr->e_type) == ET_EXEC) \
 					if (multi_load++ > max_pt_load) \
 						warnf("%s: more than %i PT_LOAD's !?", elf->filename, max_pt_load); \
 				if (file_matches_list(elf->filename, qa_wx_load)) \
@@ -295,7 +284,7 @@ static char *scanelf_file_phdr(elfobj *elf, char *found_phdr, char *found_relro,
 		Elf ## B ## _Shdr *shdr = SHDR ## B (elf->shdr); \
 		Elf ## B ## _Shdr *strtbl = shdr + EGET(ehdr->e_shstrndx); \
 		char *str; \
-		if ((void*)strtbl > (void*)elf->data_end) \
+		if ((void*)strtbl > elf->data_end) \
 			goto skip_this_shdr##B; \
 		check_flags = SHF_WRITE|SHF_EXECINSTR; \
 		for (i = 0; i < EGET(ehdr->e_shnum); ++i) { \
@@ -360,7 +349,7 @@ static const char *scanelf_file_textrel(elfobj *elf, char *found_textrel)
 		if (EGET(phdr[i].p_type) != PT_DYNAMIC || EGET(phdr[i].p_filesz) == 0) continue; \
 		offset = EGET(phdr[i].p_offset); \
 		if (offset >= elf->len - sizeof(Elf ## B ## _Dyn)) continue; \
-		dyn = DYN ## B (elf->data + offset); \
+		dyn = DYN ## B (elf->vdata + offset); \
 		while (EGET(dyn->d_tag) != DT_NULL) { \
 			if (EGET(dyn->d_tag) == DT_TEXTREL) { /*dyn->d_tag != DT_FLAGS)*/ \
 				*found_textrel = 1; \
@@ -415,12 +404,12 @@ static char *scanelf_file_textrels(elfobj *elf, char *found_textrels, char *foun
 	for (s = 0; s < EGET(ehdr->e_shnum); ++s) { \
 		uint32_t sh_type = EGET(shdr[s].sh_type); \
 		if (sh_type == SHT_REL) { \
-			rel = REL ## B (elf->data + EGET(shdr[s].sh_offset)); \
+			rel = REL ## B (elf->vdata + EGET(shdr[s].sh_offset)); \
 			rela = NULL; \
 			rmax = EGET(shdr[s].sh_size) / sizeof(*rel); \
 		} else if (sh_type == SHT_RELA) { \
 			rel = NULL; \
-			rela = RELA ## B (elf->data + EGET(shdr[s].sh_offset)); \
+			rela = RELA ## B (elf->vdata + EGET(shdr[s].sh_offset)); \
 			rmax = EGET(shdr[s].sh_size) / sizeof(*rela); \
 		} else \
 			continue; \
@@ -445,8 +434,8 @@ static char *scanelf_file_textrels(elfobj *elf, char *found_textrels, char *foun
 			} else \
 				*found_textrels = 1; \
 			/* locate this relocation symbol name */ \
-			sym = SYM ## B (elf->data + EGET(symtab->sh_offset)); \
-			if ((void*)sym > (void*)elf->data_end) { \
+			sym = SYM ## B (elf->vdata + EGET(symtab->sh_offset)); \
+			if ((void*)sym > elf->data_end) { \
 				warn("%s: corrupt ELF symbol", elf->filename); \
 				continue; \
 			} \
@@ -459,12 +448,12 @@ static char *scanelf_file_textrels(elfobj *elf, char *found_textrels, char *foun
 			/* show the raw details about this reloc */ \
 			printf("  %s: ", elf->base_filename); \
 			if (sym && sym->st_name) \
-				printf("%s", (char*)(elf->data + EGET(strtab->sh_offset) + EGET(sym->st_name))); \
+				printf("%s", elf->data + EGET(strtab->sh_offset) + EGET(sym->st_name)); \
 			else \
 				printf("(memory/data?)"); \
 			printf(" [0x%lX]", (unsigned long)r_offset); \
 			/* now try to find the closest symbol that this rel is probably in */ \
-			sym = SYM ## B (elf->data + EGET(symtab->sh_offset)); \
+			sym = SYM ## B (elf->vdata + EGET(symtab->sh_offset)); \
 			func = NULL; \
 			offset_tmp = 0; \
 			while (sym_max--) { \
@@ -485,26 +474,25 @@ static char *scanelf_file_textrels(elfobj *elf, char *found_textrels, char *foun
 				printf("(optimized out)"); \
 			printf(" [0x%lX]\n", (unsigned long)offset_tmp); \
 			if (be_verbose && has_objdump) { \
+				Elf ## B ## _Addr end_addr = offset_tmp + EGET(func->st_size); \
 				char *sysbuf; \
 				size_t syslen; \
+				int sysret; \
 				const char sysfmt[] = "objdump -r -R -d -w -l --start-address=0x%lX --stop-address=0x%lX %s | grep --color -i -C 3 '.*[[:space:]]%lX:[[:space:]]*R_.*'\n"; \
 				syslen = sizeof(sysfmt) + strlen(elf->filename) + 3 * sizeof(unsigned long) + 1; \
 				sysbuf = xmalloc(syslen); \
-				if (sysbuf) { \
-					Elf ## B ## _Addr end_addr = offset_tmp + EGET(func->st_size); \
-					if (end_addr < r_offset) \
-						/* not uncommon when things are optimized out */ \
-						end_addr = r_offset + 0x100; \
-					snprintf(sysbuf, syslen, sysfmt, \
-						(unsigned long)offset_tmp, \
-						(unsigned long)end_addr, \
-						elf->filename, \
-						(unsigned long)r_offset); \
-					fflush(stdout); \
-					system(sysbuf); \
-					fflush(stdout); \
-					free(sysbuf); \
-				} \
+				if (end_addr < r_offset) \
+					/* not uncommon when things are optimized out */ \
+					end_addr = r_offset + 0x100; \
+				snprintf(sysbuf, syslen, sysfmt, \
+					(unsigned long)offset_tmp, \
+					(unsigned long)end_addr, \
+					elf->filename, \
+					(unsigned long)r_offset); \
+				fflush(stdout); \
+				sysret = system(sysbuf); \
+				fflush(stdout); \
+				free(sysbuf); \
 			} \
 		} \
 	} }
@@ -568,7 +556,7 @@ static void scanelf_file_rpath(elfobj *elf, char *found_rpath, char **ret, size_
 			offset = EGET(phdr[i].p_offset); \
 			if (offset >= elf->len - sizeof(Elf ## B ## _Dyn)) continue; \
 			/* Just scan dynamic RPATH/RUNPATH headers */ \
-			dyn = DYN ## B (elf->data + offset); \
+			dyn = DYN ## B (elf->vdata + offset); \
 			while ((word=EGET(dyn->d_tag)) != DT_NULL) { \
 				if (word == DT_RPATH) { \
 					r = &rpath; \
@@ -582,7 +570,7 @@ static void scanelf_file_rpath(elfobj *elf, char *found_rpath, char **ret, size_
 				offset = EGET(strtbl->sh_offset) + EGET(dyn->d_un.d_ptr); \
 				if (offset < (Elf ## B ## _Off)elf->len) { \
 					if (*r) warn("ELF has multiple %s's !?", get_elfdtype(word)); \
-					*r = (char*)(elf->data + offset); \
+					*r = elf->data + offset; \
 					/* cache the length in case we need to nuke this section later on */ \
 					if (fix_elf) \
 						offset = strlen(*r); \
@@ -708,10 +696,10 @@ static char *lookup_cache_lib(elfobj *, char *);
 
 static char *lookup_cache_lib(elfobj *elf, char *fname)
 {
-	int fd = 0;
+	int fd;
 	char *strs;
 	static char buf[__PAX_UTILS_PATH_MAX] = "";
-	const char *cachefile = "/etc/ld.so.cache";
+	const char cachefile[] = "/etc/ld.so.cache";
 	struct stat st;
 
 	typedef struct {
@@ -731,35 +719,42 @@ static char *lookup_cache_lib(elfobj *elf, char *fname)
 	if (fname == NULL)
 		return NULL;
 
-	if (ldcache == 0) {
-		if (stat(cachefile, &st) || (fd = open(cachefile, O_RDONLY)) == -1)
+	if (ldcache == NULL) {
+		if (stat(cachefile, &st))
+			return NULL;
+
+		fd = open(cachefile, O_RDONLY);
+		if (fd == -1)
 			return NULL;
 
 		/* cache these values so we only map/unmap the cache file once */
 		ldcache_size = st.st_size;
-		ldcache = mmap(0, ldcache_size, PROT_READ, MAP_SHARED, fd, 0);
-
+		header = ldcache = mmap(0, ldcache_size, PROT_READ, MAP_SHARED, fd, 0);
 		close(fd);
 
-		if (ldcache == (caddr_t)-1) {
-			ldcache = 0;
+		if (ldcache == MAP_FAILED) {
+			ldcache = NULL;
 			return NULL;
 		}
 
-		if (memcmp(((header_t *) ldcache)->magic, LDSO_CACHE_MAGIC, LDSO_CACHE_MAGIC_LEN))
+		if (memcmp(header->magic, LDSO_CACHE_MAGIC, LDSO_CACHE_MAGIC_LEN) ||
+		    memcmp(header->version, LDSO_CACHE_VER, LDSO_CACHE_VER_LEN))
+		{
+			munmap(ldcache, ldcache_size);
+			ldcache = NULL;
 			return NULL;
-		if (memcmp (((header_t *) ldcache)->version, LDSO_CACHE_VER, LDSO_CACHE_VER_LEN))
-			return NULL;
-	}
+		}
+	} else
+		header = ldcache;
 
-	header = (header_t *) ldcache;
-	libent = (libentry_t *) (ldcache + sizeof(header_t));
+	libent = ldcache + sizeof(header_t);
 	strs = (char *) &libent[header->nlibs];
 
-	for (fd = 0; fd < header->nlibs; fd++) {
-		/* this should be more fine grained, but for now we assume that
-		 * diff arches will not be cached together.  and we ignore the
-		 * the different multilib mips cases. */
+	for (fd = 0; fd < header->nlibs; ++fd) {
+		/* This should be more fine grained, but for now we assume that
+		 * diff arches will not be cached together, and we ignore the
+		 * the different multilib mips cases.
+		 */
 		if (elf->elf_class == ELFCLASS64 && !(libent[fd].flags & FLAG_REQUIRED_MASK))
 			continue;
 		if (elf->elf_class == ELFCLASS32 && (libent[fd].flags & FLAG_REQUIRED_MASK))
@@ -767,10 +762,15 @@ static char *lookup_cache_lib(elfobj *elf, char *fname)
 
 		if (strcmp(fname, strs + libent[fd].sooffset) != 0)
 			continue;
+
+		/* Return first hit because that is how the ldso rolls */
 		strncpy(buf, strs + libent[fd].liboffset, sizeof(buf));
+		break;
 	}
+
 	return buf;
 }
+
 #elif defined(__NetBSD__)
 static char *lookup_cache_lib(elfobj *elf, char *fname)
 {
@@ -797,7 +797,9 @@ static char *lookup_cache_lib(elfobj *elf, char *fname)
 	return NULL;
 }
 #else
+#ifdef __ELF__
 #warning Cache support not implemented for your target
+#endif
 static char *lookup_cache_lib(elfobj *elf, char *fname)
 {
 	return NULL;
@@ -827,7 +829,7 @@ static const char *scanelf_file_needed_lib(elfobj *elf, char *found_needed, char
 			if (EGET(phdr[i].p_type) != PT_DYNAMIC || EGET(phdr[i].p_filesz) == 0) continue; \
 			offset = EGET(phdr[i].p_offset); \
 			if (offset >= elf->len - sizeof(Elf ## B ## _Dyn)) continue; \
-			dyn = DYN ## B (elf->data + offset); \
+			dyn = DYN ## B (elf->vdata + offset); \
 			while (EGET(dyn->d_tag) != DT_NULL) { \
 				if (EGET(dyn->d_tag) == DT_NEEDED) { \
 					offset = EGET(strtbl->sh_offset) + EGET(dyn->d_un.d_ptr); \
@@ -835,7 +837,7 @@ static const char *scanelf_file_needed_lib(elfobj *elf, char *found_needed, char
 						++dyn; \
 						continue; \
 					} \
-					needed = (char*)(elf->data + offset); \
+					needed = elf->data + offset; \
 					if (op == 0) { \
 						if (!be_wewy_wewy_quiet) { \
 							if (*found_needed) xchrcat(ret, ',', ret_len); \
@@ -903,7 +905,7 @@ static char *scanelf_file_bind(elfobj *elf, char *found_bind)
 			dynamic = 1; \
 			offset = EGET(phdr[i].p_offset); \
 			if (offset >= elf->len - sizeof(Elf ## B ## _Dyn)) continue; \
-			dyn = DYN ## B (elf->data + offset); \
+			dyn = DYN ## B (elf->vdata + offset); \
 			while (EGET(dyn->d_tag) != DT_NULL) { \
 				if (EGET(dyn->d_tag) == DT_BIND_NOW || \
 				   (EGET(dyn->d_tag) == DT_FLAGS && EGET(dyn->d_un.d_val) & DF_BIND_NOW)) \
@@ -926,7 +928,7 @@ static char *scanelf_file_bind(elfobj *elf, char *found_bind)
 		return NULL;
 	} else {
 		*found_bind = 1;
-		return (char *) (dynamic ? "LAZY" : "STATIC");
+		return (char *)(dynamic ? "LAZY" : "STATIC");
 	}
 }
 static char *scanelf_file_soname(elfobj *elf, char *found_soname)
@@ -948,13 +950,13 @@ static char *scanelf_file_soname(elfobj *elf, char *found_soname)
 		Elf ## B ## _Shdr *strtbl = SHDR ## B (strtbl_void); \
 		Elf ## B ## _Off offset; \
 		/* only look for soname in shared objects */ \
-		if (ehdr->e_type != ET_DYN) \
+		if (EGET(ehdr->e_type) != ET_DYN) \
 			return NULL; \
 		for (i = 0; i < EGET(ehdr->e_phnum); i++) { \
 			if (EGET(phdr[i].p_type) != PT_DYNAMIC || EGET(phdr[i].p_filesz) == 0) continue; \
 			offset = EGET(phdr[i].p_offset); \
 			if (offset >= elf->len - sizeof(Elf ## B ## _Dyn)) continue; \
-			dyn = DYN ## B (elf->data + offset); \
+			dyn = DYN ## B (elf->vdata + offset); \
 			while (EGET(dyn->d_tag) != DT_NULL) { \
 				if (EGET(dyn->d_tag) == DT_SONAME) { \
 					offset = EGET(strtbl->sh_offset) + EGET(dyn->d_un.d_ptr); \
@@ -962,7 +964,7 @@ static char *scanelf_file_soname(elfobj *elf, char *found_soname)
 						++dyn; \
 						continue; \
 					} \
-					soname = (char*)(elf->data + offset); \
+					soname = elf->data + offset; \
 					*found_soname = 1; \
 					return (be_wewy_wewy_quiet ? NULL : soname); \
 				} \
@@ -976,6 +978,173 @@ static char *scanelf_file_soname(elfobj *elf, char *found_soname)
 	return NULL;
 }
 
+/*
+ * We support the symbol form:
+ *    [%[modifiers]%][[+-]<symbol name>][,[.....]]
+ * If the symbol name is empty, then all symbols are matched.
+ * If the symbol name is a glob ("*"), then all symbols are dumped (debug).
+ *    Do not rely on this output format at all.
+ * Otherwise the symbol name is used to search (either regex or string compare).
+ * If the first char of the symbol name is a plus ("+"), then only match
+ *    defined symbols.  If it's a minus ("-"), only match undefined symbols.
+ * Putting modifiers in between the percent signs allows for more in depth
+ *    filters.  There are groups of modifiers.  If you don't specify a member
+ *    of a group, then all types in that group are matched.  The current
+ *    groups and their types are:
+ *        STT group: STT_NOTYPE:n STT_OBJECT:o STT_FUNC:f SST_FILE:F
+ *        STB group: STB_LOCAL:l STB_GLOBAL:g STB_WEAK:w
+ *        SHN group: SHN_UNDEF:u SHN_ABS:a SHN_COMMON:c {defined}:d
+ *    The "defined" value in the SHN group does not correspond to a SHN_xxx define.
+ * You can search for multiple symbols at once by seperating with a comma (",").
+ *
+ * Some examples:
+ *    ELFs with a weak function "foo":
+ *        scanelf -s %wf%foo <ELFs>
+ *    ELFs that define the symbol "main":
+ *        scanelf -s +main <ELFs>
+ *        scanelf -s %d%main <ELFs>
+ *    ELFs that refer to the undefined symbol "brk":
+ *        scanelf -s -brk <ELFs>
+ *        scanelf -s %u%brk <ELFs>
+ *    All global defined objects in an ELF:
+ *        scanelf -s %ogd% <ELF>
+ */
+static void
+scanelf_match_symname(elfobj *elf, char *found_sym, char **ret, size_t *ret_len, const char *symname,
+	unsigned int stt, unsigned int stb, unsigned int shn, unsigned long size)
+{
+	char *this_sym, *next_sym, saved = saved;
+
+	/* allow the user to specify a comma delimited list of symbols to search for */
+	next_sym = NULL;
+	do {
+		bool inc_notype, inc_object, inc_func, inc_file,
+		     inc_local, inc_global, inc_weak,
+		     inc_def, inc_undef, inc_abs, inc_common;
+
+		if (next_sym) {
+			next_sym[-1] = saved;
+			this_sym = next_sym;
+		} else
+			this_sym = find_sym;
+		if ((next_sym = strchr(this_sym, ','))) {
+			/* make parsing easier by killing the comma temporarily */
+			saved = *next_sym;
+			*next_sym = '\0';
+			next_sym += 1;
+		}
+
+		/* symbol selection! */
+		inc_notype = inc_object = inc_func = inc_file = \
+		inc_local = inc_global = inc_weak = \
+		inc_def = inc_undef = inc_abs = inc_common = \
+			(*this_sym != '%');
+
+		/* parse the contents of %...% */
+		if (!inc_notype) {
+			while (*(this_sym++)) {
+				if (*this_sym == '%') {
+					++this_sym;
+					break;
+				}
+				switch (*this_sym) {
+					case 'n': inc_notype = true; break;
+					case 'o': inc_object = true; break;
+					case 'f': inc_func   = true; break;
+					case 'F': inc_file   = true; break;
+					case 'l': inc_local  = true; break;
+					case 'g': inc_global = true; break;
+					case 'w': inc_weak   = true; break;
+					case 'd': inc_def    = true; break;
+					case 'u': inc_undef  = true; break;
+					case 'a': inc_abs    = true; break;
+					case 'c': inc_common = true; break;
+					default:  err("invalid symbol selector '%c'", *this_sym);
+				}
+			}
+
+			/* If no types are matched, not match all */
+			if (!inc_notype && !inc_object && !inc_func && !inc_file)
+				inc_notype = inc_object = inc_func = inc_file = true;
+			if (!inc_local && !inc_global && !inc_weak)
+				inc_local = inc_global = inc_weak = true;
+			if (!inc_def && !inc_undef && !inc_abs && !inc_common)
+				inc_def = inc_undef = inc_abs = inc_common = true;
+
+		/* backwards compat for defined/undefined short hand */
+		} else if (*this_sym == '+') {
+			inc_undef = false;
+			++this_sym;
+		} else if (*this_sym == '-') {
+			inc_def = inc_abs = inc_common = false;
+			++this_sym;
+		}
+
+		/* filter symbols */
+		if ((!inc_notype && stt == STT_NOTYPE) || \
+		    (!inc_object && stt == STT_OBJECT) || \
+		    (!inc_func   && stt == STT_FUNC  ) || \
+		    (!inc_file   && stt == STT_FILE  ) || \
+		    (!inc_local  && stb == STB_LOCAL ) || \
+		    (!inc_global && stb == STB_GLOBAL) || \
+		    (!inc_weak   && stb == STB_WEAK  ) || \
+		    (!inc_def    && shn && shn < SHN_LORESERVE) || \
+		    (!inc_undef  && shn == SHN_UNDEF ) || \
+		    (!inc_abs    && shn == SHN_ABS   ) || \
+		    (!inc_common && shn == SHN_COMMON))
+			continue;
+
+		if (*this_sym == '*') {
+			/* a "*" symbol gets you debug output */
+			printf("%s(%s) %5lX %15s %15s %15s %s\n",
+			       ((*found_sym == 0) ? "\n\t" : "\t"),
+			       elf->base_filename,
+			       size,
+			       get_elfstttype(stt),
+			       get_elfstbtype(stb),
+			       get_elfshntype(shn),
+			       symname);
+			goto matched;
+
+		} else {
+			if (g_match) {
+				/* regex match the symbol */
+				if (rematch(this_sym, symname, REG_EXTENDED) != 0)
+					continue;
+
+			} else if (*this_sym) {
+				/* give empty symbols a "pass", else do a normal compare */
+				const size_t len = strlen(this_sym);
+				if (!(strncmp(this_sym, symname, len) == 0 &&
+				      /* Accept unversioned symbol names */
+				      (symname[len] == '\0' || symname[len] == '@')))
+					continue;
+			}
+
+			if (be_semi_verbose) {
+				char buf[1024];
+				snprintf(buf, sizeof(buf), "%lX %s %s",
+					size,
+					get_elfstttype(stt),
+					this_sym);
+				*ret = xstrdup(buf);
+			} else {
+				if (*ret) xchrcat(ret, ',', ret_len);
+				xstrcat(ret, symname, ret_len);
+			}
+
+			goto matched;
+		}
+	} while (next_sym);
+
+	return;
+
+ matched:
+	*found_sym = 1;
+	if (next_sym)
+		next_sym[-1] = saved;
+}
+
 static char *scanelf_file_sym(elfobj *elf, char *found_sym)
 {
 	unsigned long i;
@@ -983,7 +1152,7 @@ static char *scanelf_file_sym(elfobj *elf, char *found_sym)
 	void *symtab_void, *strtab_void;
 
 	if (!find_sym) return NULL;
-	ret = find_sym;
+	ret = NULL;
 
 	scanelf_file_get_symtabs(elf, &symtab_void, &strtab_void);
 
@@ -992,67 +1161,32 @@ static char *scanelf_file_sym(elfobj *elf, char *found_sym)
 		if (elf->elf_class == ELFCLASS ## B) { \
 		Elf ## B ## _Shdr *symtab = SHDR ## B (symtab_void); \
 		Elf ## B ## _Shdr *strtab = SHDR ## B (strtab_void); \
-		Elf ## B ## _Sym *sym = SYM ## B (elf->data + EGET(symtab->sh_offset)); \
+		Elf ## B ## _Sym *sym = SYM ## B (elf->vdata + EGET(symtab->sh_offset)); \
 		unsigned long cnt = EGET(symtab->sh_entsize); \
 		char *symname; \
+		size_t ret_len = 0; \
 		if (cnt) \
 			cnt = EGET(symtab->sh_size) / cnt; \
 		for (i = 0; i < cnt; ++i) { \
+			if ((void*)sym > elf->data_end) { \
+				warnf("%s: corrupt ELF symbols - aborting", elf->filename); \
+				goto break_out;	\
+			} \
 			if (sym->st_name) { \
 				/* make sure the symbol name is in acceptable memory range */ \
-				symname = (char *)(elf->data + EGET(strtab->sh_offset) + EGET(sym->st_name)); \
-				if ((void*)symname > (void*)elf->data_end) { \
+				symname = elf->data + EGET(strtab->sh_offset) + EGET(sym->st_name); \
+				if ((void*)symname > elf->data_end) { \
 					warnf("%s: corrupt ELF symbols", elf->filename); \
 					++sym; \
 					continue; \
 				} \
-				/* debug display ... show all symbols and some extra info */ \
-				if (g_match ? rematch(ret, symname, REG_EXTENDED) == 0 : *ret == '*') { \
-					printf("%s(%s) %5lX %15s %s %s\n", \
-					       ((*found_sym == 0) ? "\n\t" : "\t"), \
-					       elf->base_filename, \
-					       (unsigned long)sym->st_size, \
-					       get_elfstttype(sym->st_info), \
-					       sym->st_shndx == SHN_UNDEF ? "U" : "D", symname); \
-					*found_sym = 1; \
-				} else { \
-					/* allow the user to specify a comma delimited list of symbols to search for */ \
-					char *this_sym, *this_sym_ver, *next_sym; \
-					this_sym = ret; \
-					this_sym_ver = versioned_symname; \
-					do { \
-						next_sym = strchr(this_sym, ','); \
-						if (next_sym == NULL) \
-							next_sym = this_sym + strlen(this_sym); \
-						/* do we want a defined symbol ? */ \
-						if (*this_sym == '+') { \
-							if (sym->st_shndx == SHN_UNDEF) \
-								goto skip_this_sym##B; \
-							++this_sym; \
-							++this_sym_ver; \
-						/* do we want an undefined symbol ? */ \
-						} else if (*this_sym == '-') { \
-							if (sym->st_shndx != SHN_UNDEF) \
-								goto skip_this_sym##B; \
-							++this_sym; \
-							++this_sym_ver; \
-						} \
-						/* ok, lets compare the name now */ \
-						if ((strncmp(this_sym, symname, (next_sym-this_sym)) == 0 && symname[next_sym-this_sym] == '\0') || \
-						    (strncmp(this_sym_ver, symname, strlen(this_sym_ver)) == 0)) { \
-							if (be_semi_verbose) { \
-								char buf[126]; \
-								snprintf(buf, sizeof(buf), "%lX %s %s", \
-									(unsigned long)sym->st_size, get_elfstttype(sym->st_info), this_sym); \
-								ret = buf; \
-							} else \
-								ret = this_sym; \
-							(*found_sym)++; \
-							goto break_out; \
-						} \
-						skip_this_sym##B: this_sym = next_sym + 1; \
-					} while (*next_sym != '\0'); \
-				} \
+				scanelf_match_symname(elf, found_sym, \
+			                          &ret, &ret_len, symname, \
+			                          ELF##B##_ST_TYPE(EGET(sym->st_info)), \
+			                          ELF##B##_ST_BIND(EGET(sym->st_info)), \
+			                          EGET(sym->st_shndx), \
+			    /* st_size can be 64bit, but no one is really that big, so screw em */ \
+			                          EGET(sym->st_size)); \
 			} \
 			++sym; \
 		} }
@@ -1070,7 +1204,6 @@ break_out:
 	else
 		return (char *)" - ";
 }
-
 
 static char *scanelf_file_sections(elfobj *elf, char *found_section)
 {
@@ -1102,7 +1235,7 @@ static char *scanelf_file_sections(elfobj *elf, char *found_section)
 }
 
 /* scan an elf file and show all the fun stuff */
-#define prints(str) write(fileno(stdout), str, strlen(str))
+#define prints(str) ({ ssize_t ret = write(fileno(stdout), str, strlen(str)); ret; })
 static int scanelf_elfobj(elfobj *elf)
 {
 	unsigned long i;
@@ -1151,12 +1284,15 @@ static int scanelf_elfobj(elfobj *elf)
 			case 'n': prints("NEEDED "); break;
 			case 'i': prints("INTERP "); break;
 			case 'b': prints("BIND "); break;
+			case 'Z': prints("SIZE "); break;
 			case 'S': prints("SONAME "); break;
 			case 's': prints("SYM "); break;
 			case 'N': prints("LIB "); break;
 			case 'T': prints("TEXTRELS "); break;
 			case 'k': prints("SECTION "); break;
 			case 'a': prints("ARCH "); break;
+			case 'I': prints("OSABI "); break;
+			case 'Y': prints("EABI "); break;
 			case 'O': prints("PERM "); break;
 			case 'D': prints("ENDIAN "); break;
 			default: warnf("'%c' has no title ?", out_format[i]);
@@ -1172,7 +1308,7 @@ static int scanelf_elfobj(elfobj *elf)
 	for (i = 0; out_format[i]; ++i) {
 		const char *out;
 		const char *tmp;
-
+		static char ubuf[sizeof(unsigned long)*2];
 		if (!IS_MODIFIER(out_format[i])) {
 			xchrcat(&out_buffer, out_format[i], &out_len);
 			continue;
@@ -1220,7 +1356,7 @@ static int scanelf_elfobj(elfobj *elf)
 		case 'r': scanelf_file_rpath(elf, &found_rpath, &out_buffer, &out_len); break;
 		case 'M': out = get_elfeitype(EI_CLASS, elf->data[EI_CLASS]); break;
 		case 'D': out = get_endian(elf); break;
-		case 'O': out = getstr_perms(elf->filename); break;
+		case 'O': out = strfileperms(elf->filename); break;
 		case 'n':
 		case 'N': out = scanelf_file_needed_lib(elf, &found_needed, &found_lib, (out_format[i]=='N'), &out_buffer, &out_len); break;
 		case 'i': out = scanelf_file_interp(elf, &found_interp); break;
@@ -1229,15 +1365,13 @@ static int scanelf_elfobj(elfobj *elf)
 		case 's': out = scanelf_file_sym(elf, &found_sym); break;
 		case 'k': out = scanelf_file_sections(elf, &found_section); break;
 		case 'a': out = get_elfemtype(elf); break;
+		case 'I': out = get_elfosabi(elf); break;
+		case 'Y': out = get_elf_eabi(elf); break;
+		case 'Z': snprintf(ubuf, sizeof(ubuf), "%lu", (unsigned long)elf->len); out = ubuf; break;;
 		default: warnf("'%c' has no scan code?", out_format[i]);
 		}
-		if (out) {
-			/* hack for comma delimited output like `scanelf -s sym1,sym2,sym3` */
-			if (out_format[i] == 's' && (tmp=strchr(out,',')) != NULL)
-				xstrncat(&out_buffer, out, &out_len, (tmp-out));
-			else
-				xstrcat(&out_buffer, out, &out_len);
-		}
+		if (out)
+			xstrcat(&out_buffer, out, &out_len);
 	}
 
 #define FOUND_SOMETHING() \
@@ -1314,9 +1448,12 @@ static int scanelf_archive(const char *filename, int fd, size_t len)
 	if (ar == NULL)
 		return 1;
 
-	ar_buffer = (char*)mmap(0, len, PROT_READ | (fix_elf ? PROT_WRITE : 0), (fix_elf ? MAP_SHARED : MAP_PRIVATE), fd, 0);
-	while ((m=ar_next(ar)) != NULL) {
-		elf = readelf_buffer(m->name, ar_buffer+lseek(fd,0,SEEK_CUR), m->size);
+	ar_buffer = mmap(0, len, PROT_READ | (fix_elf ? PROT_WRITE : 0), (fix_elf ? MAP_SHARED : MAP_PRIVATE), fd, 0);
+	while ((m = ar_next(ar)) != NULL) {
+		off_t cur_pos = lseek(fd, 0, SEEK_CUR);
+		if (cur_pos == -1)
+			errp("lseek() failed");
+		elf = readelf_buffer(m->name, ar_buffer + cur_pos, m->size);
 		if (elf) {
 			scanelf_elfobj(elf);
 			unreadelf(elf);
@@ -1454,10 +1591,10 @@ static int load_ld_cache_config(int i, const char *fname)
 			*p = 0;
 		if ((p = strchr(path, '\n')) != NULL)
 			*p = 0;
-#ifdef __linux__
+
 		/* recursive includes of the same file will make this segfault. */
 		if ((memcmp(path, "include", 7) == 0) && isblank(path[7])) {
-			glob64_t gl;
+			glob_t gl;
 			size_t x;
 			char gpath[__PAX_UTILS_PATH_MAX];
 
@@ -1468,22 +1605,22 @@ static int load_ld_cache_config(int i, const char *fname)
 			else
 				strncpy(gpath, &path[8], sizeof(gpath));
 
-			if ((glob64(gpath, 0, NULL, &gl)) == 0) {
+			if (glob(gpath, 0, NULL, &gl) == 0) {
 				for (x = 0; x < gl.gl_pathc; ++x) {
 					/* try to avoid direct loops */
 					if (strcmp(gl.gl_pathv[x], fname) == 0)
 						continue;
 					i = load_ld_cache_config(i, gl.gl_pathv[x]);
 					if (i + 1 >= ARRAY_SIZE(ldpaths)) {
-						globfree64(&gl);
+						globfree(&gl);
 						return i;
 					}
 				}
-				globfree64 (&gl);
+				globfree(&gl);
 				continue;
 			}
 		}
-#endif
+
 		if (*path != '/')
 			continue;
 
@@ -1498,7 +1635,7 @@ static int load_ld_cache_config(int i, const char *fname)
 	return i;
 }
 
-#elif defined(__FreeBSD__) || (__DragonFly__)
+#elif defined(__FreeBSD__) || defined(__DragonFly__)
 
 static int load_ld_cache_config(int i, const char *fname)
 {
@@ -1542,13 +1679,14 @@ static int load_ld_cache_config(int i, const char *fname)
 }
 
 #else
-
+#ifdef __ELF__
 #warning Cache config support not implemented for your target
+#endif
 static int load_ld_cache_config(int i, const char *fname)
 {
 	memset(ldpaths, 0x00, sizeof(ldpaths));
+	return 0;
 }
-
 #endif
 
 /* scan /etc/ld.so.conf for paths */
@@ -1563,8 +1701,8 @@ static void scanelf_ldpath(void)
 	scan_l = scan_ul = scan_ull = 0;
 
 	while (ldpaths[i]) {
-		if (!scan_l   && !strcmp(ldpaths[i], "/lib")) scan_l = 1;
-		if (!scan_ul  && !strcmp(ldpaths[i], "/usr/lib")) scan_ul = 1;
+		if (!scan_l   && !strcmp(ldpaths[i], "/lib"))           scan_l   = 1;
+		if (!scan_ul  && !strcmp(ldpaths[i], "/usr/lib"))       scan_ul  = 1;
 		if (!scan_ull && !strcmp(ldpaths[i], "/usr/local/lib")) scan_ull = 1;
 		scanelf_dir(ldpaths[i]);
 		++i;
@@ -1593,9 +1731,8 @@ static void scanelf_envpath(void)
 	free(path);
 }
 
-
-/* usage / invocation handling functions */ /* Free Flags: c d j u w C G H I J K P Q U W Y Z */
-#define PARSE_FLAGS "plRmyAXz:xetrnLibSs:k:gN:TaqvF:f:o:E:M:DO:BhV"
+/* usage / invocation handling functions */ /* Free Flags: c d j u w G H J K P Q U W */
+#define PARSE_FLAGS "plRmyAXz:xetrnLibSs:k:gN:TaqvF:f:o:E:M:DIYO:ZCBhV"
 #define a_argument required_argument
 static struct option const long_opts[] = {
 	{"path",      no_argument, NULL, 'p'},
@@ -1623,20 +1760,24 @@ static struct option const long_opts[] = {
 	{"etype",      a_argument, NULL, 'E'},
 	{"bits",       a_argument, NULL, 'M'},
 	{"endian",    no_argument, NULL, 'D'},
+	{"osabi",     no_argument, NULL, 'I'},
+	{"eabi",      no_argument, NULL, 'Y'},
 	{"perms",      a_argument, NULL, 'O'},
+	{"size",      no_argument, NULL, 'Z'},
 	{"all",       no_argument, NULL, 'a'},
 	{"quiet",     no_argument, NULL, 'q'},
 	{"verbose",   no_argument, NULL, 'v'},
 	{"format",     a_argument, NULL, 'F'},
 	{"from",       a_argument, NULL, 'f'},
 	{"file",       a_argument, NULL, 'o'},
+	{"nocolor",   no_argument, NULL, 'C'},
 	{"nobanner",  no_argument, NULL, 'B'},
 	{"help",      no_argument, NULL, 'h'},
 	{"version",   no_argument, NULL, 'V'},
 	{NULL,        no_argument, NULL, 0x0}
 };
 
-static const char *opts_help[] = {
+static const char * const opts_help[] = {
 	"Scan all directories in PATH environment",
 	"Scan all directories in /etc/ld.so.conf",
 	"Scan directories recursively",
@@ -1662,13 +1803,17 @@ static const char *opts_help[] = {
 	"Print only ELF files matching etype ET_DYN,ET_EXEC ...",
 	"Print only ELF files matching numeric bits",
 	"Print Endianness",
+	"Print OSABI",
+	"Print EABI (EM_ARM Only)",
 	"Print only ELF files matching octal permissions",
-	"Print all scanned info (-x -e -t -r -b)\n",
+	"Print ELF file size",
+	"Print all useful/simple info\n",
 	"Only output 'bad' things",
 	"Be verbose (can be specified more than once)",
 	"Use specified format for output",
 	"Read input stream from a filename",
 	"Write output stream to a filename",
+	"Don't emit color in output",
 	"Don't display the header",
 	"Print this help and exit",
 	"Print version and exit",
@@ -1737,7 +1882,7 @@ static int parseargs(int argc, char *argv[])
 			}
 			break;
 		case 'O':
-			if (sscanf(optarg, "%o", &match_perms) == (-1))
+			if (sscanf(optarg, "%o", &match_perms) == -1)
 				match_bits = 0;
 			break;
 		case 'o': {
@@ -1752,8 +1897,6 @@ static int parseargs(int argc, char *argv[])
 		case 's': {
 			if (find_sym) warn("You prob don't want to specify -s twice");
 			find_sym = optarg;
-			versioned_symname = xmalloc(sizeof(char) * (strlen(find_sym)+1+1));
-			sprintf(versioned_symname, "%s@", find_sym);
 			break;
 		}
 		case 'N': {
@@ -1810,10 +1953,12 @@ static int parseargs(int argc, char *argv[])
 					setpax = flags;
 			break;
 		}
+		case 'Z': show_size = 1; break;
 		case 'g': g_match = 1; break;
 		case 'L': use_ldcache = 1; break;
 		case 'y': scan_symlink = 0; break;
 		case 'A': scan_archives = 1; break;
+		case 'C': color_init(true); break;
 		case 'B': show_banner = 0; break;
 		case 'l': scan_ldpath = 1; break;
 		case 'p': scan_envpath = 1; break;
@@ -1833,6 +1978,8 @@ static int parseargs(int argc, char *argv[])
 		case 'v': be_verbose = (be_verbose % 20) + 1; break;
 		case 'a': show_perms = show_pax = show_phdr = show_textrel = show_rpath = show_bind = show_endian = 1; break;
 		case 'D': show_endian = 1; break;
+		case 'I': show_osabi = 1; break;
+		case 'Y': show_eabi = 1; break;
 		case ':':
 			err("Option '%c' is missing parameter", optopt);
 		case '?':
@@ -1849,7 +1996,8 @@ static int parseargs(int argc, char *argv[])
 	if (out_format) {
 		show_pax = show_phdr = show_textrel = show_rpath = \
 		show_needed = show_interp = show_bind = show_soname = \
-		show_textrels = show_perms = show_endian = 0;
+		show_textrels = show_perms = show_endian = show_size = \
+		show_osabi = show_eabi = 0;
 		for (i = 0; out_format[i]; ++i) {
 			if (!IS_MODIFIER(out_format[i])) continue;
 
@@ -1866,7 +2014,10 @@ static int parseargs(int argc, char *argv[])
 			case 'o': break;
 			case 'a': break;
 			case 'M': break;
+			case 'Z': show_size = 1; break;
 			case 'D': show_endian = 1; break;
+			case 'I': show_osabi = 1; break;
+			case 'Y': show_eabi = 1; break;
 			case 'O': show_perms = 1; break;
 			case 'x': show_pax = 1; break;
 			case 'e': show_phdr = 1; break;
@@ -1887,10 +2038,14 @@ static int parseargs(int argc, char *argv[])
 	} else {
 		size_t fmt_len = 30;
 		out_format = xmalloc(sizeof(char) * fmt_len);
+		*out_format = '\0';
 		if (!be_quiet)     xstrcat(&out_format, "%o ", &fmt_len);
 		if (show_pax)      xstrcat(&out_format, "%x ", &fmt_len);
 		if (show_perms)    xstrcat(&out_format, "%O ", &fmt_len);
+		if (show_size)     xstrcat(&out_format, "%Z ", &fmt_len);
 		if (show_endian)   xstrcat(&out_format, "%D ", &fmt_len);
+		if (show_osabi)    xstrcat(&out_format, "%I ", &fmt_len);
+		if (show_eabi)     xstrcat(&out_format, "%Y ", &fmt_len);
 		if (show_phdr)     xstrcat(&out_format, "%e ", &fmt_len);
 		if (show_textrel)  xstrcat(&out_format, "%t ", &fmt_len);
 		if (show_rpath)    xstrcat(&out_format, "%r ", &fmt_len);
@@ -1925,7 +2080,6 @@ static int parseargs(int argc, char *argv[])
 	}
 
 	/* clean up */
-	free(versioned_symname);
 	for (i = 0; ldpaths[i]; ++i)
 		free(ldpaths[i]);
 
@@ -1970,6 +2124,7 @@ static char **get_split_env(const char *envvar)
 
 static void parseenv(void)
 {
+	color_init(false);
 	qa_textrels = get_split_env("QA_TEXTRELS");
 	qa_execstack = get_split_env("QA_EXECSTACK");
 	qa_wx_load = get_split_env("QA_WX_LOAD");
@@ -1984,7 +2139,6 @@ static void cleanup(void)
 	free(qa_wx_load);
 }
 #endif
-
 
 int main(int argc, char *argv[])
 {
@@ -2002,7 +2156,6 @@ int main(int argc, char *argv[])
 #endif
 	return ret;
 }
-
 
 /* Match filename against entries in matchlist, return TRUE
  * if the file is listed */

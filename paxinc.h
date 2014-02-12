@@ -1,7 +1,7 @@
 /*
  * Copyright 2005-2007 Gentoo Foundation
  * Distributed under the terms of the GNU General Public License v2
- * $Header: /var/cvsroot/gentoo-projects/pax-utils/paxinc.h,v 1.10 2007/08/20 09:54:15 vapier Exp $
+ * $Header: /var/cvsroot/gentoo-projects/pax-utils/paxinc.h,v 1.16 2010/12/08 01:16:01 vapier Exp $
  *
  * Copyright 2005-2007 Ned Ludd        - <solar@gentoo.org>
  * Copyright 2005-2007 Mike Frysinger  - <vapier@gentoo.org>
@@ -23,11 +23,10 @@
 #include "elf.h"
 #include "paxelf.h"
 
-/* MACH-O sucks */
-/*
- * #include "macho.h"
- * #include "paxmacho.h"
-*/
+/* Mach-O love */
+#include "macho.h"
+#include "paxmacho.h"
+
 extern char do_reverse_endian;
 
 #ifdef IN_paxinc
@@ -35,6 +34,7 @@ typedef struct {
 	int fd;
 	const char *filename;
 	size_t skip;
+	char *extfn;
 } archive_handle;
 #else
 typedef void archive_handle;
@@ -65,6 +65,8 @@ archive_handle *ar_open_fd(const char *filename, int fd);
 archive_handle *ar_open(const char *filename);
 archive_member *ar_next(archive_handle *);
 
+const char *strfileperms(const char *fname);
+
 /* Get a value 'X', compensating for endianness. */
 #define EGET(X) \
 	(__extension__ ({ \
@@ -74,7 +76,7 @@ archive_member *ar_next(archive_handle *);
 		} else if (sizeof(X) == 2) { __res = bswap_16((X)); \
 		} else if (sizeof(X) == 4) { __res = bswap_32((X)); \
 		} else if (sizeof(X) == 8) { __res = bswap_64((X)); \
-		} else { errf("EGET failed ;( (sizeof(X) == %i)", (int)sizeof(X)); } \
+		} else { errf("EGET failed :( (sizeof(X) == %i)", (int)sizeof(X)); } \
 		__res; \
 	}))
 
@@ -86,18 +88,15 @@ archive_member *ar_next(archive_handle *);
 		} else if (sizeof(Y) == 2) { Y = bswap_16((uint16_t)(X)); \
 		} else if (sizeof(Y) == 4) { Y = bswap_32((uint32_t)(X)); \
 		} else if (sizeof(Y) == 8) { Y = bswap_64((uint64_t)(X)); \
-		} else { errf("ESET failed ;( (size(Y) == %i)", (int)sizeof(Y)); } \
+		} else { errf("ESET failed :( (size(Y) == %i)", (int)sizeof(Y)); } \
 	} while (0)
 
 /* helper functions for showing errors */
-#define color 1
-#define COLOR(c,b) (color ? "\e[" c ";" b "m" : "")
-#define NORM      COLOR("00", "00")
-#define RED       COLOR("31", "01")
-#define YELLOW    COLOR("33", "01")
+extern const char *NORM, *RED, *YELLOW;
+void color_init(bool disable);
 
 /* constant pointer to a constant buffer ... each program needs to set this */
-extern const char * const argv0;
+extern const char argv0[];
 
 /* we need the space before the last comma or we trigger a bug in gcc-2 :( */
 #define warn(fmt, args...) \

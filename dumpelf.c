@@ -1,14 +1,14 @@
 /*
  * Copyright 2005-2007 Gentoo Foundation
  * Distributed under the terms of the GNU General Public License v2
- * $Header: /var/cvsroot/gentoo-projects/pax-utils/dumpelf.c,v 1.23 2007/08/20 09:54:15 vapier Exp $
+ * $Header: /var/cvsroot/gentoo-projects/pax-utils/dumpelf.c,v 1.29 2010/12/08 01:24:01 vapier Exp $
  *
  * Copyright 2005-2007 Ned Ludd        - <solar@gentoo.org>
  * Copyright 2005-2007 Mike Frysinger  - <vapier@gentoo.org>
  */
 
-static const char *rcsid = "$Id: dumpelf.c,v 1.23 2007/08/20 09:54:15 vapier Exp $";
-const char * const argv0 = "dumpelf";
+static const char *rcsid = "$Id: dumpelf.c,v 1.29 2010/12/08 01:24:01 vapier Exp $";
+const char argv0[] = "dumpelf";
 
 #include "paxinc.h"
 
@@ -26,12 +26,8 @@ static void dump_rela(elfobj *elf, void *rela);
 static void usage(int status);
 static void parseargs(int argc, char *argv[]);
 
-
-
 /* variables to control behavior */
 static char be_verbose = 0;
-
-
 
 /* dump all internal elf info */
 static void dumpelf(const char *filename, long file_cnt)
@@ -102,7 +98,7 @@ static void dumpelf(const char *filename, long file_cnt)
 		uint16_t shnum = EGET(ehdr->e_shnum); \
 		for (i = 0; i < shnum; ++i) { \
 			if (i) printf(",\n"); \
-			dump_shdr(elf, shdr, i, (char*)(elf->data + offset + EGET(shdr->sh_name))); \
+			dump_shdr(elf, shdr, i, elf->vdata + offset + EGET(shdr->sh_name)); \
 			++shdr; \
 		} }
 		DUMP_SHDRS(32)
@@ -199,7 +195,8 @@ static void dump_shdr(elfobj *elf, void *shdr_void, long shdr_cnt, char *name)
 	printf("\t.sh_addralign = %-10li ,\n", (long)EGET(shdr->sh_addralign)); \
 	printf("\t.sh_entsize   = %-10li\n", (long)EGET(shdr->sh_entsize)); \
 	if (size && be_verbose) { \
-		unsigned char *data = (unsigned char*)(elf->data + EGET(shdr->sh_offset)); \
+		void *vdata = elf->vdata + EGET(shdr->sh_offset); \
+		unsigned char *data = vdata; \
 		switch (type) { \
 		case SHT_PROGBITS: { \
 			if (strcmp(name, ".interp") == 0) { \
@@ -210,26 +207,26 @@ static void dump_shdr(elfobj *elf, void *shdr_void, long shdr_cnt, char *name)
 				break; \
 		} \
 		case SHT_STRTAB: { \
-			char bool; \
+			char b; \
 			printf("\n\t/%c section dump:\n", '*'); \
-			bool = 1; \
+			b = 1; \
 			if (type == SHT_PROGBITS) --data; \
 			for (i = 0; i < size; ++i) { \
 				++data; \
 				if (*data) { \
-					if (bool) printf("\t * "); \
+					if (b) printf("\t * "); \
 					printf("%c", *data); \
-					bool = 0; \
-				} else if (!bool) { \
+					b = 0; \
+				} else if (!b) { \
 					printf("\n"); \
-					bool = 1; \
+					b = 1; \
 				} \
 			} \
 			printf("\t */\n"); \
 			break; \
 		} \
 		case SHT_DYNSYM: { \
-			Elf##B##_Sym *sym = (Elf##B##_Sym*)data; \
+			Elf##B##_Sym *sym = vdata; \
 			printf("\n\t/%c section dump:\n", '*'); \
 			for (i = 0; i < EGET(shdr->sh_size) / EGET(shdr->sh_entsize); ++i) { \
 				printf("\t * Elf%i_Sym sym%li = {\n", B, (long)i); \
@@ -266,8 +263,6 @@ static void dump_shdr(elfobj *elf, void *shdr_void, long shdr_cnt, char *name)
 	DUMP_SHDR(64)
 }
 
-
-
 /* usage / invocation handling functions */
 #define PARSE_FLAGS "vhV"
 #define a_argument required_argument
@@ -277,7 +272,7 @@ static struct option const long_opts[] = {
 	{"version",   no_argument, NULL, 'V'},
 	{NULL,        no_argument, NULL, 0x0}
 };
-static const char *opts_help[] = {
+static const char * const opts_help[] = {
 	"Be verbose (can be specified more than once)",
 	"Print this help and exit",
 	"Print version and exit",
@@ -339,8 +334,6 @@ static void parseargs(int argc, char *argv[])
 		dumpelf(argv[optind++], file_cnt++);
 	}
 }
-
-
 
 int main(int argc, char *argv[])
 {

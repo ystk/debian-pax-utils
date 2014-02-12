@@ -1,7 +1,7 @@
 /*
  * Copyright 2005-2007 Gentoo Foundation
  * Distributed under the terms of the GNU General Public License v2
- * $Header: /var/cvsroot/gentoo-projects/pax-utils/porting.h,v 1.31 2007/05/23 22:27:27 solar Exp $
+ * $Header: /var/cvsroot/gentoo-projects/pax-utils/porting.h,v 1.39 2010/01/15 12:06:37 vapier Exp $
  *
  * Copyright 2005-2007 Ned Ludd        - <solar@gentoo.org>
  * Copyright 2005-2007 Mike Frysinger  - <vapier@gentoo.org>
@@ -15,30 +15,33 @@
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(*arr))
 #undef __PAX_UTILS_CLEANUP
 
+#include <assert.h>
+#include <ctype.h>
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <fnmatch.h>
+#include <getopt.h>
+#include <inttypes.h>
+#include <libgen.h>
+#include <limits.h>
+#include <pwd.h>
+#include <regex.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
 #include <string.h>
 #include <unistd.h>
-#include <inttypes.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <dirent.h>
-#include <limits.h>
-#include <fcntl.h>
-#include <assert.h>
-#include <getopt.h>
-#include <libgen.h>
-#include <ctype.h>
-#include <pwd.h>
-#include <fnmatch.h>
-#include <regex.h>
-
 #include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include "elf.h"
+#if !defined(__FreeBSD__)
+# include <alloca.h>
+#endif
 #if defined(__linux__)
-# include <endian.h>
 # include <byteswap.h>
+# include <endian.h>
 #elif defined(__FreeBSD__)
 # include <sys/endian.h>
 #elif defined(__sun__)
@@ -66,6 +69,17 @@
 #ifdef __BOUNDS_CHECKING_ON
 # define free(ptr) do { if (ptr) free(ptr); } while (0)
 # define __PAX_UTILS_CLEANUP
+#endif
+
+/* Few arches can safely do unaligned accesses */
+#if defined(__cris__) || \
+    defined(__i386__) || \
+    defined(__powerpc__) || \
+    defined(__s390__) || \
+    defined(__x86_64__)
+# define __PAX_UNALIGNED_OK 1
+#else
+# define __PAX_UNALIGNED_OK 0
 #endif
 
 #if !defined(bswap_16)
@@ -106,9 +120,9 @@
 # endif
 #endif
 
-#if !defined(_POSIX_PATH_MAX) && !defined(PATH_MAX)
+#if !defined(_POSIX_PATH_MAX) && !defined(PATH_MAX) /* __PAX_UTILS_PATH_MAX */
 # define __PAX_UTILS_PATH_MAX 8192
-#elif _POSIX_PATH_MAX > PATH_MAX
+#elif _POSIX_PATH_MAX > PATH_MAX /* __PAX_UTILS_PATH_MAX */
 # define __PAX_UTILS_PATH_MAX _POSIX_PATH_MAX
 #else
 # define __PAX_UTILS_PATH_MAX PATH_MAX
@@ -138,7 +152,7 @@
 #  define ELF_DATA ELFDATA2MSB
 # elif defined(_LITTLE_ENDIAN)
 #  define ELF_DATA ELFDATA2LSB
-# elif defined(_BIG_ENDIAN)
+# elif defined(_BIG_ENDIAN) || defined(__BIG_ENDIAN__)
 #  define ELF_DATA ELFDATA2MSB
 # else
 #  error "no idea what the native byte order is"

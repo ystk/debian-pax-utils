@@ -1,7 +1,7 @@
 /*
  * Copyright 2005-2007 Gentoo Foundation
  * Distributed under the terms of the GNU General Public License v2
- * $Header: /var/cvsroot/gentoo-projects/pax-utils/paxelf.h,v 1.49 2007/06/29 17:09:12 solar Exp $
+ * $Header: /var/cvsroot/gentoo-projects/pax-utils/paxelf.h,v 1.56 2010/01/15 12:06:37 vapier Exp $
  *
  * Copyright 2005-2007 Ned Ludd        - <solar@gentoo.org>
  * Copyright 2005-2007 Mike Frysinger  - <vapier@gentoo.org>
@@ -13,10 +13,11 @@
 #define _PAX_ELF_H
 
 typedef struct {
-	void *ehdr;
 	void *phdr;
 	void *shdr;
-	char *data, *data_end;
+	void *_data;
+	union { void *ehdr, *vdata; char *data; };
+	void *data_end;
 	char elf_class;
 	off_t len;
 	int fd;
@@ -43,7 +44,7 @@ typedef struct {
 extern char *pax_short_hf_flags(unsigned long flags);
 extern char *pax_short_pf_flags(unsigned long flags);
 extern char *gnu_short_stack_flags(unsigned long flags);
-extern elfobj *readelf_buffer(const char *filename, char *buffer, size_t buffer_len);
+extern elfobj *readelf_buffer(const char *filename, void *buffer, size_t buffer_len);
 extern elfobj *_readelf_fd(const char *filename, int fd, size_t len, int read_only);
 #define readelf_fd(filename, fd, len) _readelf_fd(filename, fd, len, 1)
 extern elfobj *_readelf(const char *filename, int read_only);
@@ -52,10 +53,14 @@ extern void unreadelf(elfobj *elf);
 extern const char *get_elfeitype(int ei_type, int type);
 extern const char *get_elfetype(elfobj *elf);
 extern const char *get_endian(elfobj *elf);
+extern const char *get_elfosabi(elfobj *elf);
+extern const char *get_elf_eabi(elfobj *elf);
 extern const char *get_elfemtype(elfobj *elf);
 extern const char *get_elfptype(int type);
 extern const char *get_elfdtype(int type);
+extern const char *get_elfshntype(int type);
 extern const char *get_elfshttype(int type);
+extern const char *get_elfstbtype(int type);
 extern const char *get_elfstttype(int type);
 extern void *elf_findsecbyname(elfobj *elf, const char *name);
 extern int elf_max_pt_load(elfobj *elf);

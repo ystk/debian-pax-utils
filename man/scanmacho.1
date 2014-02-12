@@ -1,5 +1,5 @@
 '\" t
-.\"     Title: scanelf
+.\"     Title: scanmacho
 .\"    Author: Ned Ludd <solar@gentoo.org>
 .\" Generator: DocBook XSL Stylesheets v1.76.0 <http://docbook.sf.net/>
 .\"      Date: 03/03/2011
@@ -7,7 +7,7 @@
 .\"    Source: pax-utils 0.2.3
 .\"  Language: English
 .\"
-.TH "SCANELF" "1" "03/03/2011" "pax\-utils 0.2.3" "Documentation for pax-utils"
+.TH "SCANMACHO" "1" "03/03/2011" "pax\-utils 0.2.3" "Documentation for pax-utils"
 .\" -----------------------------------------------------------------
 .\" * Define some portability stuff
 .\" -----------------------------------------------------------------
@@ -28,15 +28,17 @@
 .\" * MAIN CONTENT STARTS HERE *
 .\" -----------------------------------------------------------------
 .SH "NAME"
-scanelf \- user\-space utility to scan ELF files
+scanmacho \- user\-space utility to scan Mach\-O files
 .SH "SYNOPSIS"
-.HP \w'\fBscanelf\fR\ 'u
-\fBscanelf\fR [\fIoptions\fR] \fIELFs\fR\ or\ \fIdirectories\fR
+.HP \w'\fBscanmacho\fR\ 'u
+\fBscanmacho\fR [\fIoptions\fR] \fIMach\-Os\fR\ or\ \fIdirectories\fR
 .SH "DESCRIPTION"
 .PP
 
-\fBscanelf\fR
-is a user\-space utility to quickly scan given ELFs, directories, or common system paths for different information\&. This may include ELF types, their PaX markings, TEXTRELs, etc\&.\&.\&.
+\fBscanmacho\fR
+is a user\-space utility to quickly scan given Mach\-Os, directories, or common system paths for different information\&. This may include Mach\-O types, their install_names, etc\&.\&.\&.
+.PP
+Because Mach\-O files can be "fat", it is possible for a single file to return multiple lines\&. Each line represents a single architecture, contained in the fat (universal) file\&. While there are no real restrictions, in practice, the entries can be distinguished by their arch type, e\&.g\&. ppc, ppc64, i386, x86_64, arm, \&.\&.\&.
 .SH "OPTIONS"
 .PP
 \fB\-A\fR, \fB\-\-archives\fR
@@ -56,29 +58,24 @@ Don\*(Aqt display the header
 .PP
 \fB\-b\fR, \fB\-\-bind\fR
 .RS 4
-Print symbol binding information (lazy or now)
+Print flags from mach_header
 .RE
 .PP
 \fB\-D\fR, \fB\-\-endian\fR
 .RS 4
-Print ELF endianness (big/little/\&.\&.\&.)
+Print Mach\-O endianness
 .RE
 .PP
-\fB\-E\fR, \fB\-\-etype\fR \fIETYPE\fR
+\fB\-E\fR, \fB\-\-etype\fR \fIfiletype\fR
 .RS 4
-Print only ELF files matching specified etype (like ET_DYN, ET_EXEC, etc\&.\&.\&.)
-.RE
-.PP
-\fB\-e\fR, \fB\-\-header\fR
-.RS 4
-Print GNU_STACK markings
+Print only Mach\-O files matching specified etype (like MH_EXECUTABLE, MH_DYLIB, etc\&.\&.\&.)
 .RE
 .PP
 \fB\-F\fR, \fB\-\-format\fR \fIFORMAT\fR
 .RS 4
 Use specified format for output; see the
 \fBFORMAT\fR
-section for more information
+section for more information\&.
 .RE
 .PP
 \fB\-f\fR, \fB\-\-from\fR \fIFILE\fR
@@ -97,38 +94,14 @@ Use strncmp to match libraries (use with
 Show condensed usage and exit
 .RE
 .PP
-\fB\-I\fR, \fB\-\-osabi\fR
-.RS 4
-Print OSABI
-.RE
-.PP
 \fB\-i\fR, \fB\-\-interp\fR
 .RS 4
-Print the interpreter information (\&.interp/PT_INTERP)
-.RE
-.PP
-\fB\-k\fR, \fB\-\-section\fR \fISECTION\fR
-.RS 4
-Find ELFs with the specified section
-.RE
-.PP
-\fB\-L\fR, \fB\-\-ldcache\fR
-.RS 4
-Utilize
-ld\&.so\&.cache
-information (use with
-\fB\-r\fR/\fB\-n\fR)
-.RE
-.PP
-\fB\-l\fR, \fB\-\-ldpath\fR
-.RS 4
-Scan all directories in
-/etc/ld\&.so\&.conf
+Print the interpreter information (LC_LOAD_DYLINKER)
 .RE
 .PP
 \fB\-M\fR, \fB\-\-bits\fR \fIBITS\fR
 .RS 4
-Print only ELF files matching specified numeric bits (like 32/64)
+Print only Mach\-O files matching specified numeric bits (like 32/64)
 .RE
 .PP
 \fB\-m\fR, \fB\-\-mount\fR
@@ -136,34 +109,34 @@ Print only ELF files matching specified numeric bits (like 32/64)
 Don\*(Aqt recursively cross mount points
 .RE
 .PP
-\fB\-N\fR, \fB\-\-lib\fR \fISONAME\fR
+\fB\-N\fR, \fB\-\-lib\fR \fIINSTALLNAME\fR
 .RS 4
-Find ELFs that need the specified SONAME
+Find Mach\-Os that need the specified INSTALL_NAME
 .RE
 .PP
 \fB\-n\fR, \fB\-\-needed\fR
 .RS 4
-Print libraries the ELF is linked against (DT_NEEDED)
+Print libraries the Mach\-O is linked against (LC_LOAD_DYLIB)\&.
 .RE
 .PP
 \fB\-O\fR, \fB\-\-perms\fR \fIPERMS\fR
 .RS 4
-Print only ELF files with matching specified octal bits (like 755)
+Print only Mach\-O files with matching specified octal bits (like 755)\&.
 .RE
 .PP
 \fB\-o\fR, \fB\-\-file\fR \fIFILE\fR
 .RS 4
-Write output stream to specified filename
+Write output stream to specified filename\&.
 .RE
 .PP
 \fB\-p\fR, \fB\-\-path\fR
 .RS 4
-Scan all directories in PATH environment
+Scan all directories in PATH environment\&.
 .RE
 .PP
 \fB\-q\fR, \fB\-\-quiet\fR
 .RS 4
-Only output \*(Aqbad\*(Aq things
+Only output \*(Aqbad\*(Aq things\&.
 .RE
 .PP
 \fB\-R\fR, \fB\-\-recursive\fR
@@ -171,31 +144,9 @@ Only output \*(Aqbad\*(Aq things
 Scan directories recursively
 .RE
 .PP
-\fB\-r\fR, \fB\-\-rpath\fR
-.RS 4
-Print runpaths encoded in the ELF (DT_RPATH/DT_RUNPATH)
-.RE
-.PP
 \fB\-S\fR, \fB\-\-soname\fR
 .RS 4
-Print the ELF\*(Aqs shared library name (DT_SONAME)
-.RE
-.PP
-\fB\-s\fR, \fB\-\-symbol\fR \fISYMBOL\fR
-.RS 4
-Find the specified symbol; see
-\fBSYMBOL MATCHING\fR
-for more info
-.RE
-.PP
-\fB\-T\fR, \fB\-\-textrels\fR
-.RS 4
-Locate cause of TEXTRELs via objdump
-.RE
-.PP
-\fB\-t\fR, \fB\-\-textrel\fR
-.RS 4
-Print TEXTREL information
+Print the Mach\-O\*(Aqs shared library name (install_name)\&.
 .RE
 .PP
 \fB\-V\fR, \fB\-\-version\fR
@@ -208,22 +159,6 @@ Print version and exit
 Be verbose (can be used more than once)
 .RE
 .PP
-\fB\-X\fR, \fB\-\-fix\fR
-.RS 4
-Try and \*(Aqfix\*(Aq bad things (use with
-\fB\-r\fR/\fB\-e\fR)
-.RE
-.PP
-\fB\-x\fR, \fB\-\-pax\fR
-.RS 4
-Print PaX markings
-.RE
-.PP
-\fB\-Y\fR, \fB\-\-eabi\fR
-.RS 4
-Print EABI (only matters for a few architectures)
-.RE
-.PP
 \fB\-y\fR, \fB\-\-symlink\fR
 .RS 4
 Don\*(Aqt scan symlinks
@@ -231,13 +166,7 @@ Don\*(Aqt scan symlinks
 .PP
 \fB\-Z\fR, \fB\-\-size\fR \fISIZE\fR
 .RS 4
-Print ELF file size
-.RE
-.PP
-\fB\-z\fR, \fB\-\-setpax\fR \fIFLAGS\fR
-.RS 4
-Sets EI_PAX/PT_PAX_FLAGS to specified flags (use with
-\fB\-Xx\fR)
+Print Mach\-O file size
 .RE
 .SH "FORMAT"
 .PP
@@ -247,8 +176,8 @@ The format string is much like a printf string in that it is a literal string wi
 .RS 4
 .\}
 .nf
-  # \fBscanelf\fR \fB\-BF\fR "file %f needs %n; funky time" /bin/bash
-  file bash needs libncurses\&.so\&.5,libdl\&.so\&.2,libc\&.so\&.6; funky time
+  # \fBscanmacho\fR \fB\-BF\fR "file %f needs %n; funky time" /bin/bash
+  file bash needs /usr/lib/libncurses\&.5\&.4\&.dylib,/usr/lib/libSystem\&.B\&.dylib; funky time
  
 .fi
 .if n \{\
@@ -265,12 +194,12 @@ There are three characters that introduce conversion specifiers\&.
 \fB%\fR
 \- replace with info
 .sp -1
-.TP 2
+.TP 4
 \(bu
 \fB#\fR
 \- silent boolean match
 .sp -1
-.TP 2
+.TP 4
 \(bu
 \fB+\fR
 \- verbose match
@@ -280,164 +209,132 @@ And there are a number of conversion specifiers\&. We try to match up the specif
 
 \(bu
 \fBa\fR
-\- machine (EM) type
+\- arch type
 .sp -1
-.TP 2
+.TP 4
 \(bu
 \fBb\fR
-\- bind flags
+\- mach_header flags
 .sp -1
-.TP 2
-\(bu
-\fBe\fR
-\- program headers
-.sp -1
-.TP 2
+.TP 4
 \(bu
 \fBD\fR
 \- endian
 .sp -1
-.TP 2
-\(bu
-\fBI\fR
-\- osabi
-.sp -1
-.TP 2
-\(bu
-\fBY\fR
-\- eabi
-.sp -1
-.TP 2
+.TP 4
 \(bu
 \fBF\fR
 \- long filename
 .sp -1
-.TP 2
+.TP 4
 \(bu
 \fBf\fR
 \- short filename
 .sp -1
-.TP 2
+.TP 4
 \(bu
 \fBi\fR
-\- interp
+\- dyld
 .sp -1
-.TP 2
-\(bu
-\fBk\fR
-\- section
-.sp -1
-.TP 2
+.TP 4
 \(bu
 \fBM\fR
-\- EI class
+\- CPU_TYPE class
 .sp -1
-.TP 2
+.TP 4
 \(bu
 \fBN\fR
 \- specified needed
 .sp -1
-.TP 2
+.TP 4
 \(bu
 \fBn\fR
 \- needed libraries
 .sp -1
-.TP 2
+.TP 4
 \(bu
 \fBp\fR
 \- filename (minus search)
 .sp -1
-.TP 2
+.TP 4
 \(bu
 \fBo\fR
-\- etype
+\- mh_type
 .sp -1
-.TP 2
+.TP 4
 \(bu
 \fBO\fR
 \- perms
 .sp -1
-.TP 2
-\(bu
-\fBr\fR
-\- runpaths
-.sp -1
-.TP 2
+.TP 4
 \(bu
 \fBS\fR
-\- SONAME
-.sp -1
-.TP 2
-\(bu
-\fBs\fR
-\- symbol
-.sp -1
-.TP 2
-\(bu
-\fBT\fR
-\- all textrels
-.sp -1
-.TP 2
-\(bu
-\fBt\fR
-\- textrel status
-.sp -1
-.TP 2
-\(bu
-\fBx\fR
-\- pax flags
+\- install_name
 .sp
-.SH "SYMBOL MATCHING"
+.SH "MACH-O FILETYPES"
 .PP
-A
-\fB\-\fR
-prefix will only show undefined references while a
-\fB+\fR
-prefix will only show defined references while no prefix will show both\&.
-.SH "ELF ETYPES"
+You can narrow your search by specifying the Mach\-O object file type\&. The commandline option takes the symbolic type name\&. Multiple values can be passed comma separated\&. Example \-E MH_EXECUTE,MH_DYLIB
 .PP
-You can narrow your search by specifying the ELF object file type (ETYPE)\&. The commandline option takes the numeric value and or symbolic type\&. Multiple values can be passed comma separated\&. Example \-E ET_EXEC,ET_DYN,1
-.PP
-Here is the normal list available for your pleasure\&. You of course are free to specify any numeric value you want\&.
+Here is the normal list available for your pleasure\&.
 .PP
 
 \(bu
-\fB0 \- ET_NONE\fR
-\- unknown type
+\fBMH_OBJECT\fR
+\- intermediate object file (\&.o)
 .sp -1
-.TP 2
+.TP 4
 \(bu
-\fB1 \- ET_REL\fR
-\- relocatable file
+\fBMH_EXECUTE\fR
+\- standard executable program
 .sp -1
-.TP 2
+.TP 4
 \(bu
-\fB2 \- ET_EXEC\fR
-\- executable file
+\fBMH_BUNDLE\fR
+\- dlopen plugin (\&.bundle)
 .sp -1
-.TP 2
+.TP 4
 \(bu
-\fB3 \- ET_DYN\fR
-\- shared object
+\fBMH_DYLIB\fR
+\- dynamic shared library (\&.dylib)
 .sp -1
-.TP 2
+.TP 4
 \(bu
-\fB4 \- ET_CORE\fR
-\- core file
+\fBMH_PRELOAD\fR
+\- executable not loaded by Mac OS X kernel (ROM)
+.sp -1
+.TP 4
+\(bu
+\fBMH_CORE\fR
+\- program crash core file
+.sp -1
+.TP 4
+\(bu
+\fBMH_DYLINKER\fR
+\- dynamic linker shared library (dyld)
+.sp -1
+.TP 4
+\(bu
+\fBMH_DYLIB_STUB\fR
+\- shared library stub for static only, no sections
+.sp -1
+.TP 4
+\(bu
+\fBMH_DSYM\fR
+\- debug symbols file (in \&.dSYM dir)
 .sp
-.SH "ELF BITS"
+.SH "MACH-O BITS"
 .PP
-You can also narrow your search by specifying the ELF bitsize\&. Again, specify the numeric value or the symbolic define\&.
+You can also narrow your search by specifying the Mach\-O bitsize\&. Specify the numeric value\&.
 .PP
 
 \(bu
-\fB32 \- ELFCLASS32\fR
-\- 32bit ELFs
+\fB32\fR
+\- 32bit mach_header
 .sp -1
-.TP 2
+.TP 4
 \(bu
-\fB64 \- ELFCLASS64\fR
-\- 64bit ELFs
+\fB64\fR
+\- 64bit mach_header_64
 .sp
 .SH "HOMEPAGE"
 .PP

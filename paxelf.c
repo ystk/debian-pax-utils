@@ -1,7 +1,7 @@
 /*
  * Copyright 2003-2007 Gentoo Foundation
  * Distributed under the terms of the GNU General Public License v2
- * $Header: /var/cvsroot/gentoo-projects/pax-utils/paxelf.c,v 1.56 2007/08/20 09:54:15 vapier Exp $
+ * $Header: /var/cvsroot/gentoo-projects/pax-utils/paxelf.c,v 1.70 2010/01/15 12:06:37 vapier Exp $
  *
  * Copyright 2005-2007 Ned Ludd        - <solar@gentoo.org>
  * Copyright 2005-2007 Mike Frysinger  - <vapier@gentoo.org>
@@ -14,7 +14,7 @@
  * binary defines into readable strings.
  */
 #define QUERY(n) { #n, n }
-typedef struct {
+typedef const struct {
 	const char *str;
 	int value;
 } pairtype;
@@ -24,7 +24,7 @@ static inline const char *find_pairtype(pairtype *pt, int type)
 	for (i = 0; pt[i].str; ++i)
 		if (type == pt[i].value)
 			return pt[i].str;
-	return "UNKNOWN TYPE";
+	return "UNKNOWN_TYPE";
 }
 
 /* translate misc elf EI_ defines */
@@ -73,7 +73,7 @@ const char *get_elfeitype(int ei_type, int type)
 		case EI_VERSION: return find_pairtype(elf_ei_version, type);
 		case EI_OSABI:   return find_pairtype(elf_ei_osabi, type);
 	}
-	return "UNKNOWN EI TYPE";
+	return "UNKNOWN_EI_TYPE";
 }
 
 /* translate elf ET_ defines */
@@ -108,11 +108,52 @@ const char *get_elfetype(elfobj *elf)
 
 const char *get_endian(elfobj *elf)
 {
-	if (elf->data[EI_DATA] == ELFDATA2LSB)
-		return (char *) "LE";
-	if (elf->data[EI_DATA] == ELFDATA2MSB)
-		return (char *) "BE";
-	return (char *) "??";
+	switch (elf->data[EI_DATA]) {
+		case ELFDATA2LSB: return "LE";
+		case ELFDATA2MSB: return "BE";
+		default:          return "??";
+	}
+}
+
+static int arm_eabi_poker(elfobj *elf)
+{
+	unsigned int emachine, eflags;
+
+	if (ELFOSABI_NONE != elf->data[EI_OSABI])
+		return -1;
+
+	if (elf->elf_class == ELFCLASS32) {
+		emachine = EHDR32(elf->ehdr)->e_machine;
+		eflags = EHDR32(elf->ehdr)->e_flags;
+	} else {
+		emachine = EHDR64(elf->ehdr)->e_machine;
+		eflags = EHDR64(elf->ehdr)->e_flags;
+	}
+
+	if (EGET(emachine) == EM_ARM)
+		return EF_ARM_EABI_VERSION(EGET(eflags)) >> 24;
+	else
+		return -1;
+}
+
+const char *get_elf_eabi(elfobj *elf)
+{
+	static char buf[26];
+	int eabi = arm_eabi_poker(elf);
+	if (eabi >= 0)
+		snprintf(buf, sizeof(buf), "%i", eabi);
+	else
+		strcpy(buf, "?");
+	return buf;
+}
+
+const char *get_elfosabi(elfobj *elf)
+{
+	const char *str = get_elfeitype(EI_OSABI, elf->data[EI_OSABI]);
+	if (str)
+		if (strlen(str) > 9)
+			return str + 9;
+	return "";
 }
 
 void print_etypes(FILE *stream)
@@ -140,7 +181,6 @@ int etype_lookup(const char *str)
 	}
 	return atoi(str);
 }
-
 
 /* translate elf EM_ defines */
 static pairtype elf_emtypes[] = {
@@ -253,7 +293,6 @@ const char *get_elfemtype(elfobj *elf)
 {
 	return find_pairtype(elf_emtypes, get_emtype(elf));
 }
-
 
 /* translate elf PT_ defines */
 static pairtype elf_ptypes[] = {
@@ -373,6 +412,15 @@ static pairtype elf_stttypes[] = {
 	QUERY(STT_FILE),
 	QUERY(STT_LOPROC),
 	QUERY(STT_HIPROC),
+	{ 0, 0 }
+};
+const char *get_elfstttype(int type)
+{
+	return find_pairtype(elf_stttypes, type);
+}
+
+/* translate elf STB_ defines */
+static pairtype elf_stbtypes[] = {
 	QUERY(STB_LOCAL),
 	QUERY(STB_GLOBAL),
 	QUERY(STB_WEAK),
@@ -380,9 +428,27 @@ static pairtype elf_stttypes[] = {
 	QUERY(STB_HIPROC),
 	{ 0, 0 }
 };
-const char *get_elfstttype(int type)
+const char *get_elfstbtype(int type)
 {
-	return find_pairtype(elf_stttypes, type & 0xF);
+	return find_pairtype(elf_stbtypes, type);
+}
+
+/* translate elf SHN_ defines */
+static pairtype elf_shntypes[] = {
+	QUERY(SHN_UNDEF),
+	QUERY(SHN_LORESERVE),
+	QUERY(SHN_LOPROC),
+	QUERY(SHN_HIPROC),
+	QUERY(SHN_ABS),
+	QUERY(SHN_COMMON),
+	QUERY(SHN_HIRESERVE),
+	{ 0, 0 }
+};
+const char *get_elfshntype(int type)
+{
+	if (type && type < SHN_LORESERVE)
+		return "DEFINED";
+	return find_pairtype(elf_shntypes, type);
 }
 
 /* Read an ELF into memory */
@@ -395,7 +461,7 @@ const char *get_elfstttype(int type)
 	((buff[EI_CLASS] == ELFCLASS32 || buff[EI_CLASS] == ELFCLASS64) && \
 	 (buff[EI_DATA] == ELFDATA2LSB || buff[EI_DATA] == ELFDATA2MSB) && \
 	 (buff[EI_VERSION] == EV_CURRENT))
-elfobj *readelf_buffer(const char *filename, char *buffer, size_t buffer_len)
+elfobj *readelf_buffer(const char *filename, void *buffer, size_t buffer_len)
 {
 	elfobj *elf;
 
@@ -403,10 +469,7 @@ elfobj *readelf_buffer(const char *filename, char *buffer, size_t buffer_len)
 	if (buffer == NULL || buffer_len < EI_NIDENT)
 		return NULL;
 
-	elf = xmalloc(sizeof(*elf));
-	if (elf == NULL)
-		return NULL;
-	memset(elf, 0x00, sizeof(*elf));
+	elf = xzalloc(sizeof(*elf));
 
 	elf->fd = -1;
 	elf->len = buffer_len;
@@ -439,7 +502,19 @@ free_elf_and_return:
 		elf->base_filename = elf->base_filename + 1;
 	elf->elf_class = elf->data[EI_CLASS];
 	do_reverse_endian = (ELF_DATA != elf->data[EI_DATA]);
-	elf->ehdr = (void*)elf->data;
+
+	/* for arches that need alignment, we have to make sure the buffer
+	 * is strictly aligned.  archive (.a) files only align to 2 bytes
+	 * while the arch can easily require 8.  so dupe the buffer so
+	 * that our local copy is always aligned (since we can't shift the
+	 * file mapping back and forth a few bytes).
+	 */
+	if (!__PAX_UNALIGNED_OK && ((unsigned long)elf->vdata & 0x7)) {
+		elf->_data = xmalloc(elf->len);
+		memcpy(elf->_data, elf->data, elf->len);
+		elf->data = elf->_data;
+		elf->data_end = elf->_data + elf->len;
+	}
 
 #define READELF_HEADER(B) \
 	if (elf->elf_class == ELFCLASS ## B) { \
@@ -453,7 +528,7 @@ free_elf_and_return:
 		else if (EGET(ehdr->e_phentsize) != sizeof(Elf ## B ## _Phdr)) \
 			invalid = 3; \
 		else { \
-			elf->phdr = elf->data + EGET(ehdr->e_phoff); \
+			elf->phdr = elf->vdata + EGET(ehdr->e_phoff); \
 			size = EGET(ehdr->e_phnum) * EGET(ehdr->e_phentsize); \
 			if (elf->phdr < elf->ehdr || /* check overflow */ \
 			    elf->phdr + size < elf->phdr || /* before start of mem */ \
@@ -471,7 +546,7 @@ free_elf_and_return:
 		else if (EGET(ehdr->e_shentsize) != sizeof(Elf ## B ## _Shdr)) \
 			invalid = 3; \
 		else { \
-			elf->shdr = elf->data + EGET(ehdr->e_shoff); \
+			elf->shdr = elf->vdata + EGET(ehdr->e_shoff); \
 			size = EGET(ehdr->e_shnum) * EGET(ehdr->e_shentsize); \
 			if (elf->shdr < elf->ehdr || /* check overflow */ \
 			    elf->shdr + size < elf->shdr || /* before start of mem */ \
@@ -503,8 +578,8 @@ elfobj *_readelf_fd(const char *filename, int fd, size_t len, int read_only)
 			return NULL;
 	}
 
-	buffer = (char*)mmap(0, len, PROT_READ | (read_only ? 0 : PROT_WRITE), (read_only ? MAP_PRIVATE : MAP_SHARED), fd, 0);
-	if (buffer == (char*)MAP_FAILED) {
+	buffer = mmap(0, len, PROT_READ | (read_only ? 0 : PROT_WRITE), (read_only ? MAP_PRIVATE : MAP_SHARED), fd, 0);
+	if (buffer == MAP_FAILED) {
 		warn("mmap on '%s' of %li bytes failed :(", filename, (unsigned long)len);
 		return NULL;
 	}
@@ -548,8 +623,9 @@ close_fd_and_return:
 /* undo the readelf() stuff */
 void unreadelf(elfobj *elf)
 {
-	if (elf->is_mmap) munmap(elf->data, elf->len);
+	if (elf->is_mmap) munmap(elf->vdata, elf->len);
 	if (elf->fd != -1) close(elf->fd);
+	if (!__PAX_UNALIGNED_OK) free(elf->_data);
 	free(elf);
 }
 
@@ -683,7 +759,7 @@ void *elf_findsecbyname(elfobj *elf, const char *name)
 		if (EGET(shdr[i].sh_offset) >= elf->len - EGET(ehdr->e_shentsize)) continue; \
 		offset = EGET(strtbl->sh_offset) + EGET(shdr[i].sh_name); \
 		if (offset >= (Elf ## B ## _Off)elf->len) continue; \
-		shdr_name = (char*)(elf->data + offset); \
+		shdr_name = elf->data + offset; \
 		if (!strcmp(shdr_name, name)) { \
 			if (ret) warnf("Multiple '%s' sections !?", name); \
 			ret = (void*)&(shdr[i]); \
