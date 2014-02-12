@@ -1,4 +1,4 @@
 # Compulsory line, this is a version 3 file
 version=3
 
-http://dev.gentoo.org/~solar/pax/ pax-utils-(.*\..*).tar.bz2
+http://dev.gentoo.org/~vapier/dist/ pax-utils-(.*\..*).tar.xz

@@ -1,9 +1,15 @@
 #!/usr/bin/make -f
 
-include /usr/share/cdbs/1/rules/debhelper.mk
-include /usr/share/cdbs/1/class/makefile.mk
+export DEB_LDFLAGS_MAINT_APPEND=-Wl,-z,defs -Wl,--as-needed -Wl,-O1
+export DEB_BUILD_MAINT_OPTIONS=hardening=+pie,+bindnow
 
 ifeq ($(DEB_HOST_ARCH_OS),linux)
-DEB_MAKE_ENVVARS := USE_CAP=yes
+USE_CAP=yes
+export USE_CAP
 endif
-DEB_MAKE_INSTALL_TARGET := install DESTDIR=$(CURDIR)/debian/pax-utils/
+
+override_dh_auto_clean:
+	make clean || true
+
+%:
+	dh $@
