@@ -1,10 +1,10 @@
 /*
- * Copyright 2005-2007 Gentoo Foundation
+ * Copyright 2005-2012 Gentoo Foundation
  * Distributed under the terms of the GNU General Public License v2
- * $Header: /var/cvsroot/gentoo-projects/pax-utils/porting.h,v 1.39 2010/01/15 12:06:37 vapier Exp $
+ * $Header: /var/cvsroot/gentoo-projects/pax-utils/porting.h,v 1.45 2014/01/11 00:29:11 vapier Exp $
  *
- * Copyright 2005-2007 Ned Ludd        - <solar@gentoo.org>
- * Copyright 2005-2007 Mike Frysinger  - <vapier@gentoo.org>
+ * Copyright 2005-2012 Ned Ludd        - <solar@gentoo.org>
+ * Copyright 2005-2012 Mike Frysinger  - <vapier@gentoo.org>
  *
  * Make sure all of the common elf stuff is setup as we expect
  */
@@ -36,10 +36,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include "elf.h"
-#if !defined(__FreeBSD__)
+#if !defined(__FreeBSD__) && !defined(__OpenBSD__)
 # include <alloca.h>
 #endif
-#if defined(__linux__)
+#if defined(__GLIBC__) || defined(__UCLIBC__)
 # include <byteswap.h>
 # include <endian.h>
 #elif defined(__FreeBSD__)
@@ -120,6 +120,15 @@
 # endif
 #endif
 
+#define _minmax(x, y, op) \
+	({ typeof(x) __x = (x); typeof(y) __y = (y); (__x op __y ? __x : __y); })
+#if !defined(min)
+# define min(x, y) _minmax(x, y, <)
+#endif
+#if !defined(max)
+# define max(x, y) _minmax(x, y, >)
+#endif
+
 #if !defined(_POSIX_PATH_MAX) && !defined(PATH_MAX) /* __PAX_UTILS_PATH_MAX */
 # define __PAX_UTILS_PATH_MAX 8192
 #elif _POSIX_PATH_MAX > PATH_MAX /* __PAX_UTILS_PATH_MAX */
@@ -160,20 +169,6 @@
 #endif
 
 /*
- * in case we are not defined by proper/up-to-date system headers,
- * we check for a whole lot of things and copy them from elf.h.
- */
-
-#ifndef PT_GNU_STACK
-# define PT_GNU_STACK	0x6474e551
-#endif
-
-/* not in <=binutils-2.14.90.0.8 (should come in by way of .9) */
-#ifndef PT_GNU_RELRO
-# define PT_GNU_RELRO	0x6474e552
-#endif
-
-/*
  * propably will never be official added to the toolchain.
  * But none the less we should try to get 0x65041580 reserved
  */
@@ -201,6 +196,10 @@
 # else
 #  define EM_ST19	74
 # endif
+#endif
+
+#ifndef O_CLOEXEC
+# define O_CLOEXEC 0
 #endif
 
 #endif /* _PORTING_H */

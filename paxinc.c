@@ -1,10 +1,10 @@
 /*
- * Copyright 2003-2007 Gentoo Foundation
+ * Copyright 2003-2012 Gentoo Foundation
  * Distributed under the terms of the GNU General Public License v2
- * $Header: /var/cvsroot/gentoo-projects/pax-utils/paxinc.c,v 1.14 2010/12/08 01:16:01 vapier Exp $
+ * $Header: /var/cvsroot/gentoo-projects/pax-utils/paxinc.c,v 1.16 2013/04/10 22:16:45 vapier Exp $
  *
- * Copyright 2005-2007 Ned Ludd        - <solar@gentoo.org>
- * Copyright 2005-2007 Mike Frysinger  - <vapier@gentoo.org>
+ * Copyright 2005-2012 Ned Ludd        - <solar@gentoo.org>
+ * Copyright 2005-2012 Mike Frysinger  - <vapier@gentoo.org>
  */
 
 /* stick common symbols here that are needed by paxinc.h */
@@ -53,12 +53,15 @@ archive_handle *ar_open(const char *filename)
 archive_member *ar_next(archive_handle *ar)
 {
 	char *s;
-	size_t len = 0;
+	ssize_t len = 0;
 	static archive_member ret;
 
 	if (ar->skip && lseek(ar->fd, ar->skip, SEEK_CUR) == -1) {
 close_and_ret:
+		free(ar->extfn);
 		close(ar->fd);
+		ar->extfn = NULL;
+		ar->fd = -1;
 		return NULL;
 	}
 
@@ -84,7 +87,6 @@ close_and_ret:
 			goto close_and_ret;
 		}
 		len = atoi(ret.buf.formatted.size);
-		/* we will leak this memory */
 		ar->extfn = xmalloc(sizeof(char) * (len + 1));
 		if (read(ar->fd, ar->extfn, len) != len)
 			goto close_and_ret;
@@ -100,7 +102,7 @@ close_and_ret:
 	if (s[0] == '#' && s[1] == '1' && s[2] == '/') {
 		/* BSD extended filename, always in use on Darwin */
 		len = atoi(s + 3);
-		if (len <= sizeof(ret.buf.formatted.name)) {
+		if (len <= (ssize_t)sizeof(ret.buf.formatted.name)) {
 			if (read(ar->fd, ret.buf.formatted.name, len) != len)
 				goto close_and_ret;
 		} else {

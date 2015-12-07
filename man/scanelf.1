@@ -1,13 +1,13 @@
 '\" t
 .\"     Title: scanelf
 .\"    Author: Ned Ludd <solar@gentoo.org>
-.\" Generator: DocBook XSL Stylesheets v1.76.0 <http://docbook.sf.net/>
-.\"      Date: 03/03/2011
+.\" Generator: DocBook XSL Stylesheets v1.78.0 <http://docbook.sf.net/>
+.\"      Date: 03/21/2014
 .\"    Manual: Documentation for pax-utils
-.\"    Source: pax-utils 0.2.3
+.\"    Source: pax-utils 0.8.1
 .\"  Language: English
 .\"
-.TH "SCANELF" "1" "03/03/2011" "pax\-utils 0.2.3" "Documentation for pax-utils"
+.TH "SCANELF" "1" "03/21/2014" "pax\-utils 0.8.1" "Documentation for pax-utils"
 .\" -----------------------------------------------------------------
 .\" * Define some portability stuff
 .\" -----------------------------------------------------------------
@@ -109,7 +109,9 @@ Print the interpreter information (\&.interp/PT_INTERP)
 .PP
 \fB\-k\fR, \fB\-\-section\fR \fISECTION\fR
 .RS 4
-Find ELFs with the specified section
+Find ELFs with the specified section\&. May be specified multiple times to match multiple sections simultaneously\&. See
+\fBSECTION MATCHING\fR
+for more info\&.
 .RE
 .PP
 \fB\-L\fR, \fB\-\-ldcache\fR
@@ -138,7 +140,9 @@ Don\*(Aqt recursively cross mount points
 .PP
 \fB\-N\fR, \fB\-\-lib\fR \fISONAME\fR
 .RS 4
-Find ELFs that need the specified SONAME
+Find ELFs that need the specified SONAME\&. May be specified multiple times to match multiple SONAMEs simultaneously\&. See
+\fBSONAME MATCHING\fR
+for more info\&.
 .RE
 .PP
 \fB\-n\fR, \fB\-\-needed\fR
@@ -238,6 +242,16 @@ Print ELF file size
 .RS 4
 Sets EI_PAX/PT_PAX_FLAGS to specified flags (use with
 \fB\-Xx\fR)
+.RE
+.PP
+\fB\-\-use\-ldpath\fR
+.RS 4
+Use the ld\&.so\&.conf paths to find the full path to libraries (use in conjunction with \-\-needed)\&.
+.RE
+.PP
+\fB\-\-root\fR \fIPATH\fR
+.RS 4
+Search the specified root tree instead of /\&. Generally paired with options like \-l or \-p\&. This implicitly treats all paths specified on the command line as relative to the root, so be sure to omit it if you are explicitly listing ELFs\&.
 .RE
 .SH "FORMAT"
 .PP
@@ -389,11 +403,87 @@ And there are a number of conversion specifiers\&. We try to match up the specif
 .sp
 .SH "SYMBOL MATCHING"
 .PP
-A
-\fB\-\fR
-prefix will only show undefined references while a
-\fB+\fR
-prefix will only show defined references while no prefix will show both\&.
+The string specified takes the form
+\fB[%[modifiers]%][[+\-]<symbol name>][,[\&.\&.\&.\&.\&.]]\fR\&.
+.PP
+If the
+\fBsymbol name\fR
+is empty, then all symbols are matched\&.
+.PP
+If the
+\fBsymbol name\fR
+is a glob ("\fB*\fR"), then all symbols are dumped in a debug format\&. Do not rely on the structure of this output as it changes whenever we feel like it\&.
+.PP
+If the first char of the symbol name is a plus ("\fB+\fR"), then only match defined symbols\&. If it\*(Aqs a minus ("\fB\-\fR"), only match undefined symbols\&. When we say "defined", we mean the symbol is defined in the ELF vs having an external reference\&.
+.PP
+Putting modifiers in between the percent signs ("\fB%\fR") allows for more in depth filters\&. There are groups of modifiers\&. If you don\*(Aqt specify a member of a group, then all types in that group are matched\&.
+.PP
+
+\(bu
+\fBSTT group\fR
+(symbol type)
+.sp -1
+.TP 2
+\(bu
+\fBn\fR
+\- STT_NOTYPE
+.sp -1
+.TP 2
+\(bu
+\fBo\fR
+\- STT_OBJECT
+.sp -1
+.TP 2
+\(bu
+\fBf\fR
+\- STT_FUNC
+.sp -1
+.TP 2
+\(bu
+\fBF\fR
+\- STT_FILE
+.sp -1
+.TP 2
+\(bu
+\fBSTB group\fR
+(symbol binding/visibility)
+.sp -1
+.TP 2
+\(bu
+\fBl\fR
+\- STB_LOCAL
+.sp -1
+.TP 2
+\(bu
+\fBg\fR
+\- STB_GLOBAL
+.sp -1
+.TP 2
+\(bu
+\fBw\fR
+\- STB_WEAK
+.sp -1
+.TP 2
+\(bu
+\fBSHN group\fR
+(section header)
+.sp -1
+.TP 2
+\(bu
+\fBu\fR
+\- SHN_UNDEF
+.sp -1
+.TP 2
+\(bu
+\fBa\fR
+\- SHN_ABS
+.sp -1
+.TP 2
+\(bu
+\fBc\fR
+\- SHN_COMMON
+.PP
+You can search for multiple symbols simultaneously by using a comma ("\fB,\fR") to separate different searches\&. Every symbol that matches will be displayed while unmatched symbols will not\&.
 .SH "ELF ETYPES"
 .PP
 You can narrow your search by specifying the ELF object file type (ETYPE)\&. The commandline option takes the numeric value and or symbolic type\&. Multiple values can be passed comma separated\&. Example \-E ET_EXEC,ET_DYN,1
@@ -439,6 +529,16 @@ You can also narrow your search by specifying the ELF bitsize\&. Again, specify 
 \fB64 \- ELFCLASS64\fR
 \- 64bit ELFs
 .sp
+.SH "SECTION MATCHING"
+.PP
+A
+\fB!\fR
+prefix will only show ELF\*(Aqs that do not have the specified section\&.
+.SH "NEEDED SONAME MATCHING"
+.PP
+A
+\fB!\fR
+prefix will only show ELF\*(Aqs that do not depend on the specified library\&.
 .SH "HOMEPAGE"
 .PP
 \m[blue]\fBhttp://hardened\&.gentoo\&.org/pax\-utils\&.xml\fR\m[]
@@ -457,7 +557,8 @@ if possible\&.
 \fBpaxctl\fR(1),
 \fBpspax\fR(1),
 \fBreadelf\fR(1),
-\fBscanelf\fR(1)
+\fBscanelf\fR(1),
+\fBelf\fR(5)
 .SH "AUTHORS"
 .PP
 \fBNed Ludd\fR <\&solar@gentoo.org\&>

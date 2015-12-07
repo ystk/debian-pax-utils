@@ -1,33 +1,39 @@
 # Copyright 2003-2006 Ned Ludd <solar@linbsd.net>
 # Distributed under the terms of the GNU General Public License v2
-# $Header: /var/cvsroot/gentoo-projects/pax-utils/Makefile,v 1.75 2010/06/08 05:51:31 vapier Exp $
+# $Header: /var/cvsroot/gentoo-projects/pax-utils/Makefile,v 1.83 2013/05/23 00:09:01 vapier Exp $
 ####################################################################
 
-check_gcc=$(shell if $(CC) $(1) -S -o /dev/null -xc /dev/null > /dev/null 2>&1; \
+check_gcc = $(shell if $(CC) $(1) -S -o /dev/null -xc /dev/null > /dev/null 2>&1; \
 	then echo "$(1)"; else echo "$(2)"; fi)
+check_gcc_many = $(foreach flag,$(1),$(call check_gcc,$(flag)))
 
 ####################################################################
 # Avoid CC overhead when installing
 ifneq ($(MAKECMDGOALS),install)
+_WFLAGS   := \
+	-Wdeclaration-after-statement \
+	-Wextra \
+	-Wsequence-point \
+	-Wstrict-overflow
 WFLAGS    := -Wall -Wunused -Wimplicit -Wshadow -Wformat=2 \
              -Wmissing-declarations -Wmissing-prototypes -Wwrite-strings \
              -Wbad-function-cast -Wnested-externs -Wcomment -Winline \
              -Wchar-subscripts -Wcast-align -Wno-format-nonliteral \
-             $(call check_gcc, -Wdeclaration-after-statement) \
-             $(call check-gcc, -Wsequence-point) \
-             $(call check-gcc, -Wstrict-overflow) \
-             $(call check-gcc, -Wextra)
+             $(call check_gcc_many,$(_WFLAGS))
 endif
 
 CFLAGS    ?= -O2 -pipe
-override CPPFLAGS  += -D_GNU_SOURCE
+override CPPFLAGS  += -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
 LDFLAGS   +=
 LIBS      :=
 DESTDIR    =
-PREFIX    := $(DESTDIR)/usr
+PREFIX     = $(DESTDIR)/usr
+DATADIR    = $(PREFIX)/share
+MANDIR     = $(DATADIR)/man
+DOCDIR     = $(DATADIR)/doc
+PKGDOCDIR  = $(DOCDIR)/pax-utils
 STRIP     := strip
 MKDIR     := mkdir -p
-CP        := cp
 INS_EXE   := install -m755
 INS_DATA  := install -m644
 
@@ -58,10 +64,13 @@ SOURCES      = $(OBJS:%.o=%.c)
 all: $(OBJS) $(TARGETS)
 	@:
 
-debug:
-	$(MAKE) CFLAGS="$(CFLAGS) -g3 -ggdb $(call check-gcc,-nopie)" clean all
-	@-/sbin/chpax  -permsx $(ELF_TARGETS)
-	@-/sbin/paxctl -permsx $(ELF_TARGETS)
+DEBUG_FLAGS = \
+	-nopie \
+	-fsanitize=address
+debug: clean
+	$(MAKE) CFLAGS="$(CFLAGS) -g3 -ggdb $(call check_gcc_many,$(DEBUG_FLAGS))" all
+	@-chpax  -permsx $(ELF_TARGETS)
+	@-paxctl -permsx $(ELF_TARGETS)
 
 compile.c = $(CC) $(CFLAGS) $(CPPFLAGS) $(CPPFLAGS-$<) -o $@ -c $<
 
@@ -100,36 +109,36 @@ strip-more:
 	$(STRIP) --strip-unneeded $(TARGETS)
 
 install: all
-	$(MKDIR) $(PREFIX)/bin/ $(PREFIX)/share/man/man1/
+	$(MKDIR) $(PREFIX)/bin/ $(MANDIR)/man1/ $(PKGDOCDIR)/
 	for sh in *.sh ; do $(INS_EXE) $$sh $(PREFIX)/bin/$${sh%.sh} || exit $$? ; done
-	$(INS_EXE) $(TARGETS) $(PREFIX)/bin/
-ifeq ($(S),)
-	$(MKDIR) $(PREFIX)/share/doc/pax-utils/
-	$(CP) README BUGS TODO $(PREFIX)/share/doc/pax-utils/
-	-$(INS_DATA) $(MPAGES) $(PREFIX)/share/man/man1/
-else
-	$(INS_DATA) $(MPAGES) $(PREFIX)/share/man/man1/
+ifeq ($(USE_PYTHON),yes)
+	for py in *.py ; do $(INS_EXE) $$py $(PREFIX)/bin/$${py%.py} || exit $$? ; done
 endif
+	$(INS_EXE) $(TARGETS) $(PREFIX)/bin/
+	$(INS_DATA) README BUGS TODO $(PKGDOCDIR)/
+	$(INS_DATA) $(MPAGES) $(MANDIR)/man1/
 
+PN = pax-utils
+P = $(PN)-$(PV)
 dist:
 	@if [ "$(PV)" = "" ] ; then \
 		echo "Please run 'make dist PV=<ver>'" ; \
 		exit 1 ; \
 	fi
-	rm -rf pax-utils-$(PV)
-	mkdir pax-utils-$(PV)
-	cp -a CVS pax-utils-$(PV)/
-	cd pax-utils-$(PV) && cvs up
-	echo "<releaseinfo>$(PV)</releaseinfo>" > pax-utils-$(PV)/man/fragment/version
-	$(MAKE) -C pax-utils-$(PV)/man
-	tar jcf pax-utils-$(PV).tar.bz2 pax-utils-$(PV) --exclude=CVS --exclude=.cvsignore
+	rm -rf $(P)
+	mkdir $(P)
+	cp -a CVS $(P)/
+	cd $(P) && cvs up
+	echo "<releaseinfo>$(PV)</releaseinfo>" > $(P)/man/fragment/version
+	$(MAKE) -C $(P)/man
+	tar cf - $(P) --exclude=CVS --exclude=.cvsignore | xz > $(P).tar.xz
 	@printf "\n ..... Making sure clean cvs build works ..... \n\n"
 	unset CFLAGS; \
 	for t in all check clean debug check ; do \
-		$(MAKE) -C pax-utils-$(PV) $$t || exit $$? ; \
+		$(MAKE) -C $(P) $$t || exit $$? ; \
 	done
-	rm -rf pax-utils-$(PV)
-	du -b pax-utils-$(PV).tar.bz2
+	rm -rf $(P)
+	du -b $(P).tar.xz
 
 -include .depend
 
