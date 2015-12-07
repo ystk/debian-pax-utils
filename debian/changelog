@@ -1,3 +1,11 @@
+pax-utils (0.8.1-1) unstable; urgency=medium
+
+  * Imported Upstream version 0.8.1 (Closes: #755907)
+  * Updates to debian/* files
+  * New maintainer (thanks Yves-Alexis!)
+
+ -- Tomasz Buchert <tomasz.buchert@inria.fr>  Mon, 22 Sep 2014 14:30:47 +0200
+
 pax-utils (0.2.3-2) unstable; urgency=low
 
   * debian/rules:

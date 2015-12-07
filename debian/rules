@@ -1,14 +1,18 @@
 #!/usr/bin/make -f
 
-export DEB_LDFLAGS_MAINT_APPEND=-Wl,-z,defs -Wl,--as-needed -Wl,-O1
-export DEB_BUILD_MAINT_OPTIONS=hardening=+pie,+bindnow
+export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
+export DEB_BUILD_MAINT_OPTIONS  = hardening=+pie,+bindnow
 
 ifeq ($(DEB_HOST_ARCH_OS),linux)
-USE_CAP=yes
-export USE_CAP
+	# pspax.c on Linux can use sys/capability.h
+	# to get nice textual representations
+	USE_CAP=yes
+	export USE_CAP
 endif
 
 override_dh_auto_clean:
+	# overridden, because otherwise "make distclean" is run
+	# which deletes too many files
 	make clean || true
 
 %:

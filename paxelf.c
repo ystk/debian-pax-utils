@@ -1,10 +1,10 @@
 /*
- * Copyright 2003-2007 Gentoo Foundation
+ * Copyright 2003-2012 Gentoo Foundation
  * Distributed under the terms of the GNU General Public License v2
- * $Header: /var/cvsroot/gentoo-projects/pax-utils/paxelf.c,v 1.70 2010/01/15 12:06:37 vapier Exp $
+ * $Header: /var/cvsroot/gentoo-projects/pax-utils/paxelf.c,v 1.80 2014/01/11 00:57:16 vapier Exp $
  *
- * Copyright 2005-2007 Ned Ludd        - <solar@gentoo.org>
- * Copyright 2005-2007 Mike Frysinger  - <vapier@gentoo.org>
+ * Copyright 2005-2012 Ned Ludd        - <solar@gentoo.org>
+ * Copyright 2005-2012 Mike Frysinger  - <vapier@gentoo.org>
  */
 
 #include "paxinc.h"
@@ -32,20 +32,17 @@ static pairtype elf_ei_class[] = {
 	QUERY(ELFCLASSNONE),
 	QUERY(ELFCLASS32),
 	QUERY(ELFCLASS64),
-	QUERY(ELFCLASSNUM),
 	{ 0, 0 }
 };
 static pairtype elf_ei_data[] = {
 	QUERY(ELFDATANONE),
 	QUERY(ELFDATA2LSB),
 	QUERY(ELFDATA2MSB),
-	QUERY(ELFDATANUM),
 	{ 0, 0 }
 };
 static pairtype elf_ei_version[] = {
 	QUERY(EV_NONE),
 	QUERY(EV_CURRENT),
-	QUERY(EV_NUM),
 	{ 0, 0 }
 };
 static pairtype elf_ei_osabi[] = {
@@ -53,6 +50,7 @@ static pairtype elf_ei_osabi[] = {
 	QUERY(ELFOSABI_SYSV),
 	QUERY(ELFOSABI_HPUX),
 	QUERY(ELFOSABI_NETBSD),
+	QUERY(ELFOSABI_GNU),
 	QUERY(ELFOSABI_LINUX),
 	QUERY(ELFOSABI_SOLARIS),
 	QUERY(ELFOSABI_AIX),
@@ -61,6 +59,7 @@ static pairtype elf_ei_osabi[] = {
 	QUERY(ELFOSABI_TRU64),
 	QUERY(ELFOSABI_MODESTO),
 	QUERY(ELFOSABI_OPENBSD),
+	QUERY(ELFOSABI_ARM_AEABI),
 	QUERY(ELFOSABI_ARM),
 	QUERY(ELFOSABI_STANDALONE),
 	{ 0, 0 }
@@ -83,11 +82,6 @@ static pairtype elf_etypes[] = {
 	QUERY(ET_EXEC),
 	QUERY(ET_DYN),
 	QUERY(ET_CORE),
-	QUERY(ET_NUM),
-	QUERY(ET_LOOS),
-	QUERY(ET_HIOS),
-	QUERY(ET_LOPROC),
-	QUERY(ET_HIPROC),
 	{ 0, 0 }
 };
 
@@ -150,10 +144,9 @@ const char *get_elf_eabi(elfobj *elf)
 const char *get_elfosabi(elfobj *elf)
 {
 	const char *str = get_elfeitype(EI_OSABI, elf->data[EI_OSABI]);
-	if (str)
-		if (strlen(str) > 9)
-			return str + 9;
-	return "";
+	if (strncmp(str, "ELFOSABI_", 9) == 0)
+		str += 9;
+	return str;
 }
 
 void print_etypes(FILE *stream)
@@ -274,7 +267,10 @@ static pairtype elf_emtypes[] = {
 	QUERY(EM_SEP),
 	QUERY(EM_ARCA),
 	QUERY(EM_UNICORE),
-	QUERY(EM_NUM),
+	QUERY(EM_AARCH64),
+	QUERY(EM_TILEPRO),
+	QUERY(EM_MICROBLAZE),
+	QUERY(EM_TILEGX),
 	QUERY(EM_ALPHA),
 	{ 0, 0 }
 };
@@ -304,7 +300,6 @@ static pairtype elf_ptypes[] = {
 	QUERY(PT_SHLIB),
 	QUERY(PT_PHDR),
 	QUERY(PT_TLS),
-	QUERY(PT_NUM),
 	QUERY(PT_GNU_EH_FRAME),
 	QUERY(PT_GNU_STACK),
 	QUERY(PT_GNU_RELRO),
@@ -352,7 +347,33 @@ static pairtype elf_dtypes[] = {
 	QUERY(DT_ENCODING),
 	QUERY(DT_PREINIT_ARRAY),
 	QUERY(DT_PREINIT_ARRAYSZ),
-	QUERY(DT_NUM),
+	QUERY(DT_GNU_PRELINKED),
+	QUERY(DT_GNU_CONFLICTSZ),
+	QUERY(DT_GNU_LIBLISTSZ),
+	QUERY(DT_CHECKSUM),
+	QUERY(DT_PLTPADSZ),
+	QUERY(DT_MOVEENT),
+	QUERY(DT_MOVESZ),
+	QUERY(DT_GNU_HASH),
+	QUERY(DT_TLSDESC_PLT),
+	QUERY(DT_TLSDESC_GOT),
+	QUERY(DT_GNU_CONFLICT),
+	QUERY(DT_GNU_LIBLIST),
+	QUERY(DT_CONFIG),
+	QUERY(DT_DEPAUDIT),
+	QUERY(DT_AUDIT),
+	QUERY(DT_PLTPAD),
+	QUERY(DT_MOVETAB),
+	QUERY(DT_SYMINFO),
+	QUERY(DT_VERSYM),
+	QUERY(DT_RELACOUNT),
+	QUERY(DT_RELCOUNT),
+	QUERY(DT_VERDEF),
+	QUERY(DT_VERDEFNUM),
+	QUERY(DT_VERNEED),
+	QUERY(DT_VERNEEDNUM),
+	QUERY(DT_AUXILIARY),
+	QUERY(DT_FILTER),
 	{ 0, 0 }
 };
 const char *get_elfdtype(int type)
@@ -379,23 +400,16 @@ static pairtype elf_shttypes[] = {
 	QUERY(SHT_PREINIT_ARRAY),
 	QUERY(SHT_GROUP),
 	QUERY(SHT_SYMTAB_SHNDX),
-	QUERY(SHT_NUM),
-	QUERY(SHT_LOOS),
+	QUERY(SHT_GNU_ATTRIBUTES),
+	QUERY(SHT_GNU_HASH),
 	QUERY(SHT_GNU_LIBLIST),
 	QUERY(SHT_CHECKSUM),
-	QUERY(SHT_LOSUNW),
 	QUERY(SHT_SUNW_move),
 	QUERY(SHT_SUNW_COMDAT),
 	QUERY(SHT_SUNW_syminfo),
 	QUERY(SHT_GNU_verdef),
 	QUERY(SHT_GNU_verneed),
 	QUERY(SHT_GNU_versym),
-	QUERY(SHT_HISUNW),
-	QUERY(SHT_HIOS),
-	QUERY(SHT_LOPROC),
-	QUERY(SHT_HIPROC),
-	QUERY(SHT_LOUSER),
-	QUERY(SHT_HIUSER),
 	{ 0, 0 }
 };
 const char *get_elfshttype(int type)
@@ -410,8 +424,9 @@ static pairtype elf_stttypes[] = {
 	QUERY(STT_FUNC),
 	QUERY(STT_SECTION),
 	QUERY(STT_FILE),
-	QUERY(STT_LOPROC),
-	QUERY(STT_HIPROC),
+	QUERY(STT_COMMON),
+	QUERY(STT_TLS),
+	QUERY(STT_GNU_IFUNC),
 	{ 0, 0 }
 };
 const char *get_elfstttype(int type)
@@ -424,8 +439,7 @@ static pairtype elf_stbtypes[] = {
 	QUERY(STB_LOCAL),
 	QUERY(STB_GLOBAL),
 	QUERY(STB_WEAK),
-	QUERY(STB_LOPROC),
-	QUERY(STB_HIPROC),
+	QUERY(STB_GNU_UNIQUE),
 	{ 0, 0 }
 };
 const char *get_elfstbtype(int type)
@@ -436,12 +450,11 @@ const char *get_elfstbtype(int type)
 /* translate elf SHN_ defines */
 static pairtype elf_shntypes[] = {
 	QUERY(SHN_UNDEF),
-	QUERY(SHN_LORESERVE),
-	QUERY(SHN_LOPROC),
-	QUERY(SHN_HIPROC),
+	QUERY(SHN_BEFORE),
+	QUERY(SHN_AFTER),
 	QUERY(SHN_ABS),
 	QUERY(SHN_COMMON),
-	QUERY(SHN_HIRESERVE),
+	QUERY(SHN_XINDEX),
 	{ 0, 0 }
 };
 const char *get_elfshntype(int type)
@@ -675,56 +688,6 @@ char *pax_short_pf_flags(unsigned long flags)
 	return buffer;
 }
 
-unsigned long pax_pf2hf_flags(unsigned long paxflags)
-{
-	unsigned long flags = 0;
-	char *pf_flags = pax_short_pf_flags(paxflags);
-	size_t x, len = strlen(pf_flags);
-	for (x = 0; x < len; x++) {
-		switch (pf_flags[x]) {
-			case 'p':
-				flags |= HF_PAX_PAGEEXEC;
-				break;
-			case 'P':
-				flags = (flags & ~HF_PAX_PAGEEXEC) | HF_PAX_SEGMEXEC;
-				break;
-			case 'E':
-				flags |= HF_PAX_EMUTRAMP;
-				break;
-			case 'e':
-				flags = (flags & ~HF_PAX_EMUTRAMP);
-				break;
-			case 'm':
-				flags |= HF_PAX_MPROTECT;
-				break;
-			case 'M':
-				flags = (flags & ~HF_PAX_MPROTECT);
-				break;
-			case 'r':
-				flags |= HF_PAX_RANDMMAP;
-				break;
-			case 'R':
-				flags = (flags & ~HF_PAX_RANDMMAP);
-				break;
-			case 'X':
-				flags |= HF_PAX_RANDEXEC;
-				break;
-			case 'x':
-				flags = (flags & ~HF_PAX_RANDEXEC);
-				break;
-			case 's':
-				flags |= HF_PAX_SEGMEXEC;
-				break;
-			case 'S':
-				flags = (flags & ~HF_PAX_SEGMEXEC) | HF_PAX_PAGEEXEC;
-				break;
-			default:
-				break;
-		}
-	}
-	return flags;
-}
-
 char *gnu_short_stack_flags(unsigned long flags)
 {
 	static char buffer[4];
@@ -756,7 +719,6 @@ void *elf_findsecbyname(elfobj *elf, const char *name)
 	if (shstrndx >= shnum) return NULL; \
 	strtbl = &(shdr[shstrndx]); \
 	for (i = 0; i < shnum; ++i) { \
-		if (EGET(shdr[i].sh_offset) >= elf->len - EGET(ehdr->e_shentsize)) continue; \
 		offset = EGET(strtbl->sh_offset) + EGET(shdr[i].sh_name); \
 		if (offset >= (Elf ## B ## _Off)elf->len) continue; \
 		shdr_name = elf->data + offset; \
@@ -771,24 +733,6 @@ void *elf_findsecbyname(elfobj *elf, const char *name)
 	return ret;
 }
 
-int elf_max_pt_load(elfobj *elf)
-{
-#define MAX_PT_LOAD(B) \
-	if (elf->elf_class == ELFCLASS ## B) { \
-	Elf ## B ## _Ehdr *ehdr = EHDR ## B (elf->ehdr); \
-	switch (EGET(ehdr->e_ident[EI_OSABI])) { \
-	case ELFOSABI_NONE: \
-	case ELFOSABI_NETBSD: \
-	case ELFOSABI_FREEBSD: \
-	case ELFOSABI_LINUX: \
-	case ELFOSABI_ARM:     return 2; \
-	case ELFOSABI_OPENBSD: return 7; \
-	} }
-	MAX_PT_LOAD(32)
-	MAX_PT_LOAD(64)
-
-	return 1;
-}
 #if 0
  # define ELFOSABI_NONE           0       /* UNIX System V ABI */
  # define ELFOSABI_SYSV           0       /* Alias.  */

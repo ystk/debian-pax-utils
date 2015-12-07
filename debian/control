@@ -1,12 +1,12 @@
 Source: pax-utils
 Section: misc
 Priority: extra
-Maintainer: Yves-Alexis Perez <yves-alexis.perez@ssi.gouv.fr>
-Build-Depends: dpkg-dev (>= 1.16.1), debhelper (>= 8.9.3), 
- libcap2-dev [linux-any], python
-Standards-Version: 3.9.2
+Maintainer: Tomasz Buchert <tomasz.buchert@inria.fr>
+Build-Depends: debhelper (>= 9), libcap2-dev [linux-any], python
+Standards-Version: 3.9.5
 Homepage: http://dev.gentoo.org/~solar/pax-utils/
-XS-Vcs-Svn: http://anonsvn.remlab.net/svn/pkg-remlab/pax-utils
+Vcs-Git: git://anonscm.debian.org/collab-maint/pax-utils.git
+Vcs-Browser: http://anonscm.debian.org/gitweb/?p=collab-maint/pax-utils.git
 
 Package: pax-utils
 Architecture: any
